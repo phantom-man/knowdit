@@ -1,0 +1,47 @@
+{
+ "type": "CLEAR",
+ "commit": "77b3d0970a1b6da92bf3ac48986d4de740ea4e14",
+ "caller": "zcode",
+ "when": "20261031-023515",
+ "files": {
+  "crates/knowdit-audit/src/report/mod.rs": {
+   "sha": "85dcf53884cfc8869d396ec7112a2e2efa70999aef2869630a424e67d609580f",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261031-023513",
+   "artifact": ".adversary\\reviews\\gate_20261031-023513.md"
+  },
+  "crates/knowdit-audit/src/source_access.rs": {
+   "sha": "5c64d3fe06fa1db592fb10c00ccf65972a5200100bb0d0753756d431d04385ae",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261031-023513",
+   "artifact": ".adversary\\reviews\\gate_20261031-023513.md"
+  },
+  "crates/knowdit-kg/src/learn.rs": {
+   "sha": "c591edda33cc92a06301f0154d16efad056c8a98791327848680c874c9eff352",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261031-023513",
+   "artifact": ".adversary\\reviews\\gate_20261031-023513.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261031-023513.md": "model: deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8 | provider: DeepInfra | usage: {'prompt_tokens': 14868, 'completion_tokens': 24983, 'total_tokens': 39851, 'cost': 0.007585298, 'is_byok': False, 'prompt_tokens_details': {'cached_tokens': 12800, 'cache_write_tokens': 0, 'audio_tokens': 0, 'video_tokens': 0}, 'cost_details': {'upstream_inference_cost': 0.007585298, 'upstream_inference_prompt_cost': 0.000240296, 'upstream_inference_completions_cost': 0.007345002}, 'completion_tokens_details': {'reasoning_tokens': 24661, 'image_tokens': 0, 'audio_tokens': 0}} | scrubbed: 0 | files: ['crates/knowdit-audit/src/report/mod.rs', 'crates/knowdit-audit/src/source_access.rs', 'crates/knowdit-kg/src/learn.rs'] | prompt: gate/adversary-review@1 (cache) | caller: zcode\n\n**LOW \u2014 `crates/knowdit-kg/src/learn.rs`, `effective_max_input` (env-var fallback branch)**\n\nQuoted lines:\n`.and_then(|v| v.parse::<u64>().ok())`\n`.unwrap_or(131_072)`\n\nTrigger: `KNOWDIT_DEFAULT_CONTEXT_WINDOW` is set to `0` (or any zero-valued string like `\"00\"`). `parse::<u64>()` succeeds and yields `Some(0)`, so `unwrap_or(131_072)` is bypassed and `effective_max_input` returns `0` instead of the conservative default. (An empty/whitespace/garbage value instead silently falls back to 131072 with no warning.)\n\nImpact: the exact failure mode this patch was added to remove reappears. `get_context_budget` becomes `(0.0 * utilization) as usize == 0`, so `chunk_budget` in `extract_semantics`/`extract_findings` collapses to `0` after `saturating_sub(sys + suffix)`, and `ProjectSourceAccess::resolve` packs nothing. The behavior is only reachable through operator misconfiguration (the common case, env unset, is correct), hence LOW, but the override would be trivially hardened with a `filter(|v| *v > 0)` before `unwrap_or` so a zero override cannot silently reintroduce the zero-budget hard failure.\n\nVERDICT: WARN"
+ },
+ "adjudication": {
+  "denial": "reviews/gate_20261031-022743.md",
+  "outcomes": {
+   "fixed": 3
+  },
+  "detail": ".adversary/adjudications.json"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261031-023513.md": {
+   "embedded": "23f62ebb88a05a82613006d5e52ef0931d431df30e93482397d52124f51a99f4",
+   "disk": "23f62ebb88a05a82613006d5e52ef0931d431df30e93482397d52124f51a99f4"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "mac": "0972665dea548824dfab6fc4356bb2e7acd46126a688b260d46a99164f6b4e07"
+}
