@@ -981,6 +981,8 @@ pub fn effective_max_input(model: &OpenAIModel) -> u64 {
     std::env::var("KNOWDIT_DEFAULT_CONTEXT_WINDOW")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
+        .filter(|v| *v > 0) // gate_20261031-023513: a zero override must not
+                            // silently reintroduce the zero-budget failure
         .unwrap_or(131_072)
 }
 
