@@ -1,0 +1,26 @@
+{
+ "type": "CLEAR",
+ "commit": "7bdb71e317bf111ced9f582f367bdeaf39912602",
+ "caller": "zcode",
+ "when": "20261031-024105",
+ "files": {
+  "crates/knowdit-kg/src/learn.rs": {
+   "sha": "c0cf7072bc403d02ed3ddf8c7f7e9b4fe9659b81b1d9a65920e450acac5b115a",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "CLEAR",
+   "when": "20261031-024103",
+   "artifact": ".adversary\\reviews\\gate_20261031-024103.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261031-024103.md": "model: deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8 | provider: DeepInfra | usage: {'prompt_tokens': 10204, 'completion_tokens': 3018, 'total_tokens': 13222, 'cost': 0.00181427792, 'is_byok': False, 'prompt_tokens_details': {'cached_tokens': 768, 'cache_write_tokens': 0, 'audio_tokens': 0, 'video_tokens': 0}, 'cost_details': {'upstream_inference_cost': 0.00181427792, 'upstream_inference_prompt_cost': 0.00092698592, 'upstream_inference_completions_cost': 0.000887292}, 'completion_tokens_details': {'reasoning_tokens': 2845, 'image_tokens': 0, 'audio_tokens': 0}} | scrubbed: 0 | files: ['crates/knowdit-kg/src/learn.rs'] | prompt: gate/adversary-review@1 (cache) | caller: zcode\n\nVerified the change against the provided bytes: the added `.filter(|v| *v > 0)` sits on the `Option<u64>` produced by `.and_then(|v| v.parse::<u64>().ok())`, so the predicate correctly receives `&u64`; a `\"0\"` override is dropped and `.unwrap_or(131_072)` restores the conservative default, while any non-zero registry window or positive override is returned unchanged. This makes `effective_max_input` incapable of returning 0 through the env path, so the downstream `get_context_budget` (clamped to \u22650.05 utilization) can no longer collapse to a zero-token budget. No caller signature, contract, or reachable path is broken, and the comment's claim is accurate.\n\nVERDICT: CLEAR"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261031-024103.md": {
+   "embedded": "80295f23ea2a8f19b7351777351c6b99c5d554013cacea1a3e0f4ee35ee272b7",
+   "disk": "80295f23ea2a8f19b7351777351c6b99c5d554013cacea1a3e0f4ee35ee272b7"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "mac": "5a10d9dff082e10eaa6f51b4d063561a9899d387c8363b6840d43768ba12da8a"
+}
