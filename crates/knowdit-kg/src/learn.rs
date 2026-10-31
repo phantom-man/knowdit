@@ -964,12 +964,32 @@ impl ProjectData {
 /// budgets.
 pub const DEFAULT_CONTEXT_WINDOW_UTILIZATION: f64 = 0.2;
 
+/// LOCAL PATCH (Nexusmill fork, 2026-10-31): llmy's registry does not
+/// know OpenRouter-native model slugs (e.g.
+/// `deepseek/deepseek-v4.1-flash-1017`) and reports `max_input() == 0`
+/// for them, which collapsed every window-derived prompt budget to 1
+/// token and hard-failed the finding-link pass. An exact-zero registry
+/// window means "unknown" — fall back to a conservative default
+/// (override: `KNOWDIT_DEFAULT_CONTEXT_WINDOW`). Non-zero windows are
+/// returned verbatim, so genuinely small real windows keep their true
+/// budget (gate finding 2, gate_20261031-022743).
+pub fn effective_max_input(model: &OpenAIModel) -> u64 {
+    let registry_max = model.config.max_input();
+    if registry_max > 0 {
+        return registry_max;
+    }
+    std::env::var("KNOWDIT_DEFAULT_CONTEXT_WINDOW")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(131_072)
+}
+
 /// Token budget for a single prompt: `utilization` × the model's max input.
 /// `utilization` is clamped to a sane `(0, 1]` band so a mis-typed CLI value
 /// can't zero out (or overflow) the budget.
 pub(crate) fn get_context_budget(model: &OpenAIModel, utilization: f64) -> usize {
     let utilization = utilization.clamp(0.05, 1.0);
-    (model.config.max_input() as f64 * utilization) as _
+    (effective_max_input(model) as f64 * utilization) as _
 }
 
 pub(crate) fn sanitize_prompt_prefix(value: &str) -> String {

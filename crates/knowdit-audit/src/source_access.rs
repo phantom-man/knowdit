@@ -133,7 +133,10 @@ impl ProjectSourceAccess {
         if window_ratio <= 0.0 {
             return access;
         }
-        let budget = (llm.model.config.max_input() as f64 * window_ratio.clamp(0.01, 1.0)) as usize;
+        // LOCAL PATCH (Nexusmill fork): registry-unknown models report
+        // max_input()==0; the shared fallback keeps audit budgeting sane.
+        let budget = (knowdit_kg::learn::effective_max_input(&llm.model) as f64
+            * window_ratio.clamp(0.01, 1.0)) as usize;
 
         // Path first: a contract name can repeat across files, and the profile
         // records the defining file precisely so the two can be tied together.

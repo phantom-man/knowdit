@@ -52,7 +52,10 @@ impl CandidateChunker {
     /// prompt may occupy; `reserve` is what the non-candidate part of that
     /// prompt already costs.
     pub(crate) fn new(llm: &LLM, window_ratio: f64, reserve: usize) -> Self {
-        let window = (llm.model.config.max_input() as f64 * window_ratio.clamp(0.05, 1.0)) as usize;
+        // LOCAL PATCH (Nexusmill fork): registry-unknown models report
+        // max_input()==0; the shared fallback keeps audit chunking sane.
+        let window = (knowdit_kg::learn::effective_max_input(&llm.model) as f64
+            * window_ratio.clamp(0.05, 1.0)) as usize;
         Self {
             llm: llm.clone(),
             budget: window.saturating_sub(reserve).max(1024),
