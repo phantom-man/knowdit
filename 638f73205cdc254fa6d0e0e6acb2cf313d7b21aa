@@ -1,0 +1,68 @@
+{
+ "type": "CLEAR",
+ "commit": "638f73205cdc254fa6d0e0e6acb2cf313d7b21aa",
+ "caller": "zcode",
+ "when": "20261101-002646",
+ "files": {
+  "crates/knowdit-kg/src/checkpoint.rs": {
+   "sha": "f3334c9691a598f3415f1f5afe06bb5dbf093773405abfe95c5c54dc7480a0aa",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261101-002643",
+   "artifact": ".adversary\\reviews\\gate_20261101-002643.md"
+  },
+  "crates/knowdit-kg/src/checkpoint_journal.rs": {
+   "sha": "fd4c1bce80d6f98a26dcf9c933268841c7638222a161345b8835891f3102bb01",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261101-002643",
+   "artifact": ".adversary\\reviews\\gate_20261101-002643.md"
+  },
+  "crates/knowdit-kg/src/learn.rs": {
+   "sha": "53a8167fd14d59dba86721669e8e7784024015ad30a0fbd11457af12a241210c",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261101-002643",
+   "artifact": ".adversary\\reviews\\gate_20261101-002643.md"
+  },
+  "crates/knowdit-kg/src/lib.rs": {
+   "sha": "8146660625d54e3ab30693f3245d1d2259fc9a539af0c85dd482321f1a7fe082",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261101-002643",
+   "artifact": ".adversary\\reviews\\gate_20261101-002643.md"
+  },
+  "crates/knowdit/src/cmd/audit/extract_semantics.rs": {
+   "sha": "6fad52c61b49ef26d30e6ee8ed307c369a9d2a4534fc89b96359b3a4917bb48e",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261101-002643",
+   "artifact": ".adversary\\reviews\\gate_20261101-002643.md"
+  },
+  "crates/knowdit/src/cmd/learn/learn.rs": {
+   "sha": "198fd9b7ea7c29a470ed5c84f9913e85ff73412960c885218f27fff8cdea0c4a",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261101-002643",
+   "artifact": ".adversary\\reviews\\gate_20261101-002643.md"
+  },
+  "crates/knowdit/src/cmd/workflow/learn.rs": {
+   "sha": "8811fc0156f4f9289e84f52172abdfd1aabc7c9cee4958b276e5382e8ad86b58",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261101-002643",
+   "artifact": ".adversary\\reviews\\gate_20261101-002643.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261101-002643.md": "model: deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8 | provider: DeepInfra | usage: {'prompt_tokens': 32249, 'completion_tokens': 20051, 'total_tokens': 52300, 'cost': 0.00898238992, 'is_byok': False, 'prompt_tokens_details': {'cached_tokens': 768, 'cache_write_tokens': 0, 'audio_tokens': 0, 'video_tokens': 0}, 'cost_details': {'upstream_inference_cost': 0.00898238992, 'upstream_inference_prompt_cost': 0.00308739592, 'upstream_inference_completions_cost': 0.005894994}, 'completion_tokens_details': {'reasoning_tokens': 19444, 'image_tokens': 0, 'audio_tokens': 0}} | scrubbed: 0 | files: ['crates/knowdit-kg/src/checkpoint.rs', 'crates/knowdit-kg/src/checkpoint_journal.rs', 'crates/knowdit-kg/src/learn.rs', 'crates/knowdit-kg/src/lib.rs', 'crates/knowdit/src/cmd/audit/extract_semantics.rs', 'crates/knowdit/src/cmd/learn/learn.rs', 'crates/knowdit/src/cmd/workflow/learn.rs'] | prompt: gate/adversary-review@1 (cache) | caller: zcode\n\nLooking at this change, I need to separate what actually executes from what's dormant. The checkpoint feature is threaded through new `sink: Option<&CheckpointSink>` parameters, but every production call site in the provided files passes `None` (`extract_semantics.rs`, both `learn.rs` sites, `workflow/learn.rs`), so the entire resume path \u2014 including `load_stage` \u2014 is inert in the shipped binary. I verified the signature changes line up with all shown callers (compile-consistent) and that the resume/hash logic is sound *when* it runs. The one real defect I found is in the self-heal wrapper.\n\n**Finding 1 \u2014 LOW \u2014 `crates/knowdit-kg/src/checkpoint.rs`, `CheckpointSink::load_stage`**\n\n```rust\nlet (records, last_good_offset) = journal.load()?;\nif records.len() < journal.load()?.0.len() {\n    // torn tail detected on the first load; heal now\n    journal.truncate_to(last_good_offset)?;\n}\n```\n\n`Journal::load()` is a pure read of the file. Calling it twice back-to-back on an unchanged file returns the identical `(Vec<ChunkRecord>, u64)`, so `records.len() < journal.load()?.0.len()` evaluates `x < x` \u2014 **always false**. The `truncate_to(last_good_offset)` branch is dead code. The documented contract on this function, \"Torn tails are self-healed (truncated at the last good record),\" is therefore false: a torn tail is never truncated.\n\nTrigger (via the change's own public API): `write_chunk` records 0..N, the process dies mid-append of N+1 (torn tail), then `load_stage` returns `[0..N]` but leaves the torn bytes in place. When the resumed run appends chunk N+1 again, the new record is written *after* the torn bytes; every subsequent `load()` walks to the torn record and stops, so chunk N+1 is silently invisible forever. Impact: a chunk that was successfully checkpointed is lost on resume \u2192 it is re-extracted (paid LLM waste) and the checkpoint silently fails to persist.\n\nSeverity is LOW, not higher, because this is latent: no production path constructs a `Some(sink)` (all callers pass `None`), so a torn tail cannot arise in any reachable execution of this change. It becomes a real silent-data-loss path the moment the sink is wired \u2014 which the new `Option<&CheckpointSink>` parameters strongly signal is the next step \u2014 so it must be fixed before activation (e.g., compare `last_good_offset` against the actual file length, or have `load()` report whether it stopped early).\n\nVERDICT: WARN"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261101-002643.md": {
+   "embedded": "499388870b77ae3a7c2a504d73e9e2f5e99ac913524b42d5dbd908681770a14c",
+   "disk": "499388870b77ae3a7c2a504d73e9e2f5e99ac913524b42d5dbd908681770a14c"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "mac": "91eb23f3bc8b0cb9211cddf17327c01956608cc82011df521b1a77274df1af13"
+}
