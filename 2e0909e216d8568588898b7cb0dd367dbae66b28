@@ -1,0 +1,68 @@
+{
+ "type": "CLEAR",
+ "commit": "2e0909e216d8568588898b7cb0dd367dbae66b28",
+ "caller": "zcode",
+ "when": "20261101-013743",
+ "files": {
+  "crates/knowdit-kg/src/agents.rs": {
+   "sha": "df407b9d234e543bb2e43411b68eb8db196cb50a57a333f322547934afb3a8a9",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261101-013740",
+   "artifact": ".adversary\\reviews\\gate_20261101-013740.md"
+  },
+  "crates/knowdit-kg/src/learn.rs": {
+   "sha": "331cbcb64984466e9dd96f800d1dea89b50b9a672304161fc8e980b225803533",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261101-013740",
+   "artifact": ".adversary\\reviews\\gate_20261101-013740.md"
+  },
+  "crates/knowdit-kg/src/lib.rs": {
+   "sha": "c206e54dbbf5ecdf8d01cf6048fd19990abf5572d46d5f6588e241c5cc7e5942",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261101-013740",
+   "artifact": ".adversary\\reviews\\gate_20261101-013740.md"
+  },
+  "crates/knowdit-kg/src/source_filter.rs": {
+   "sha": "f29a1c6019c4242fbfcdbcdacb194db8c8b870dc524f7606f6aefcec4e48cf30",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261101-013740",
+   "artifact": ".adversary\\reviews\\gate_20261101-013740.md"
+  },
+  "crates/knowdit/src/cmd/learn/learn.rs": {
+   "sha": "4a1ca28b1bb6b45dce33f9f77f0e5552ede37b54b5139b2f96bc0eadadb48da4",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261101-013740",
+   "artifact": ".adversary\\reviews\\gate_20261101-013740.md"
+  },
+  "crates/knowdit/src/cmd/learn/merge_args.rs": {
+   "sha": "1b9c80dce5243caedb1024a14e5780c2e892aac8eb489c17e1462dfdd25560a4",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261101-013740",
+   "artifact": ".adversary\\reviews\\gate_20261101-013740.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261101-013740.md": "model: deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8 | provider: DeepInfra | usage: {'prompt_tokens': 41791, 'completion_tokens': 24162, 'total_tokens': 65953, 'cost': 0.00838841192, 'is_byok': False, 'prompt_tokens_details': {'cached_tokens': 29568, 'cache_write_tokens': 0, 'audio_tokens': 0, 'video_tokens': 0}, 'cost_details': {'upstream_inference_cost': 0.00838841192, 'upstream_inference_prompt_cost': 0.00128478392, 'upstream_inference_completions_cost': 0.007103628}, 'completion_tokens_details': {'reasoning_tokens': 23523, 'image_tokens': 0, 'audio_tokens': 0}} | scrubbed: 0 | files: ['crates/knowdit-kg/src/agents.rs', 'crates/knowdit-kg/src/learn.rs', 'crates/knowdit-kg/src/lib.rs', 'crates/knowdit-kg/src/source_filter.rs', 'crates/knowdit/src/cmd/learn/learn.rs', 'crates/knowdit/src/cmd/learn/merge_args.rs'] | prompt: gate/adversary-review@1 (cache) | caller: zcode\n\nI reviewed the diff against the full staged bytes. The changes are: a new `source_filter` module wired into `build_project_prompt_body`, a batch-size default change (40 \u2192 20) in two places, and a logging-only change to the checkpoint activation message. I verified the following:\n\n- `build_project_prompt_body` is only consumed by `categorize` and `extract_semantics` (prompt construction), so filtering cannot corrupt DB writes or checkpoint payloads; chunk hashing stays deterministic within a binary version (version change simply forces re-extraction, which is logged).\n- `filter_content(&file.content, &lang)` / `should_skip_file(path)` type-check (`&String`\u2192`&str`, `&PathBuf`\u2192`&Path` coercions), and `lang` is only borrowed by `format!`, so reuse across the loop is sound.\n- `MergeChunkingOptions::pack_new_item_batches` still yields one decision per new item per candidate chunk regardless of batch size (each item appears in every chunk's work unit), so 40\u219220 changes agent-call overhead, not merge outcomes. 20 < default `max_agent_steps` 160, and `pack_new_item_batches_count_cap_floored_to_one` etc. still hold.\n- The new warning branch is accurate: the concurrent path passes `None` as the sink, so \"does not yet checkpoint\" is true.\n- The supplied `source_filter` tests are internally consistent with the implementation (I traced each assertion).\n\nOne real (low-severity) behavioral false positive survives:\n\n**LOW \u2014 `crates/knowdit-kg/src/source_filter.rs`, `should_skip_file`, stem heuristic** \u2014 quoted lines: `/// Conservative: only skips files that are unambiguously test/mock/script.` and `if stem.starts_with(\"mock\") || stem.ends_with(\"mock\") {`\n\n- Trigger: a production contract whose basename stem merely *ends with* the substring \"mock\" (e.g. `contracts/Hammock.sol` \u2192 stem `hammock`) or *starts with* it as part of a longer word (e.g. `Mockingbird.sol`).\n- Impact: `should_skip_file` returns `true`, `build_project_prompt_body` emits only a `[skipped: test/mock/script]` marker, and the file's code never reaches `TokenCursor` \u2014 so its semantics are silently absent from that project's KG (and, downstream, a finding about such a contract can become unlinkable in `link_findings_in_project`, which treats an unlinked finding as a hard error). The module's own \"unambiguously test/mock\" invariant is not upheld: `ends_with(\"mock\")` is a suffix substring match, so an ordinary word ending in \"mock\" is misclassified. Severity is LOW because the impact requires a specific filename the change does not itself introduce.\n\nVERDICT: WARN"
+ },
+ "adjudication": {
+  "denial": "reviews/gate_20261101-011750.md",
+  "outcomes": {
+   "fixed": 3
+  },
+  "detail": ".adversary/adjudications.json"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261101-013740.md": {
+   "embedded": "a896f4734defc2db030323831797748118aaa00d6138d41c066c1335617d02f6",
+   "disk": "a896f4734defc2db030323831797748118aaa00d6138d41c066c1335617d02f6"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "mac": "2595d1470b79efae9946acbc9c2a2f0e5533e61cf9ea67ba2e4f2b034369599d"
+}
