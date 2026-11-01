@@ -172,6 +172,7 @@ impl ProjectData {
         llm: &LLM,
         agent_options: &AgentRunOptions,
         chunk_input_budget: Option<usize>,
+        sink: Option<&crate::checkpoint::CheckpointSink>,
     ) -> Result<ExtractResult> {
         let pid = self.display_id();
 
@@ -196,8 +197,8 @@ impl ProjectData {
         tracing::info!("Project {} categorized as: {:?}", pid, categories);
 
         let (all_semantics, all_findings) = tokio::try_join!(
-            self.extract_semantics(llm, &categories, agent_options, chunk_input_budget),
-            self.extract_findings(llm, &categories, agent_options, chunk_input_budget)
+            self.extract_semantics(llm, &categories, agent_options, chunk_input_budget, sink),
+            self.extract_findings(llm, &categories, agent_options, chunk_input_budget, sink)
         )?;
 
         tracing::info!(
@@ -258,6 +259,7 @@ impl ProjectData {
         llm: &LLM,
         agent_options: &AgentRunOptions,
         chunk_input_budget: Option<usize>,
+        sink: Option<&crate::checkpoint::CheckpointSink>,
     ) -> Result<ExtractResult> {
         let pid = self.display_id();
 
@@ -282,7 +284,7 @@ impl ProjectData {
         tracing::info!("Project {} categorized as: {:?}", pid, categories);
 
         let all_semantics = self
-            .extract_semantics(llm, &categories, agent_options, chunk_input_budget)
+            .extract_semantics(llm, &categories, agent_options, chunk_input_budget, sink)
             .await?;
         tracing::info!(
             "Extracted {} raw semantics from project {}",
@@ -526,6 +528,7 @@ impl ProjectData {
         categories: &[DeFiCategory],
         agent_options: &AgentRunOptions,
         chunk_input_budget: Option<usize>,
+        sink: Option<&crate::checkpoint::CheckpointSink>,
     ) -> Result<Vec<ExtractedSemantic>> {
         let system_prompt = prompts::GENERAL_ROLE_SYSTEM;
         let model = &llm.model;
@@ -549,9 +552,66 @@ impl ProjectData {
             ));
         };
 
+        // Checkpoint resume: load already-completed chunks for this
+        // stage. Empty when no sink is configured (hard invariant:
+        // None produces byte-identical behavior).
+        let checkpointed: std::collections::HashMap<
+            u32,
+            (String, Vec<u8>),
+        > = match sink {
+            Some(s) => s
+                .load_stage(crate::checkpoint::stage::SEMANTIC_EXTRACT)
+                .unwrap_or_default(),
+            None => std::collections::HashMap::new(),
+        };
+        if !checkpointed.is_empty() {
+            tracing::info!(
+                "Checkpoint resume: {} semantic-extract chunk(s) already completed for {}",
+                checkpointed.len(),
+                self.display_id(),
+            );
+        }
+
         let mut all_semantics = Vec::new();
         let mut chunk_idx = 0usize;
         while let Some(chunk) = cursor.next_chunk(chunk_budget) {
+            let hash = crate::checkpoint::chunk_hash(&chunk);
+
+            // Resume from checkpoint when the hash matches (same source
+            // text, same budget => same deterministic chunk boundaries)
+            if let Some((stored_hash, payload)) =
+                checkpointed.get(&(chunk_idx as u32))
+            {
+                if *stored_hash == hash {
+                    match serde_json::from_slice::<Vec<ExtractedSemantic>>(
+                        payload,
+                    ) {
+                        Ok(stored) => {
+                            tracing::info!(
+                                "Chunk {} resumed from checkpoint ({} semantic(s))",
+                                chunk_idx,
+                                stored.len(),
+                            );
+                            all_semantics.extend(stored);
+                            chunk_idx += 1;
+                            continue;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Checkpoint chunk {} deserialize failed ({}); re-extracting",
+                                chunk_idx,
+                                e,
+                            );
+                        }
+                    }
+                } else {
+                    tracing::warn!(
+                        "Checkpoint chunk {} hash mismatch (source changed); re-extracting",
+                        chunk_idx,
+                    );
+                }
+            }
+
             let user_prompt = format!("{}{}", chunk, user_suffix);
             tracing::info!(
                 "Extracting semantics from chunk {} (~{} tokens, done={})",
@@ -575,6 +635,31 @@ impl ProjectData {
                 chunk_idx,
                 chunk_semantics.len(),
             );
+
+            // Checkpoint this chunk (best-effort: extraction already
+            // succeeded; a checkpoint write failure is logged, not fatal)
+            if let Some(sink) = sink {
+                let payload = serde_json::to_vec(&chunk_semantics)
+                    .map_err(|e| {
+                        KgError::other(&format!(
+                            "checkpoint serialize: {}",
+                            e
+                        ))
+                    })?;
+                if let Err(e) = sink.write_chunk(
+                    crate::checkpoint::stage::SEMANTIC_EXTRACT,
+                    chunk_idx as u32,
+                    &hash,
+                    &payload,
+                ) {
+                    tracing::warn!(
+                        "Checkpoint write failed for chunk {}: {}",
+                        chunk_idx,
+                        e,
+                    );
+                }
+            }
+
             all_semantics.extend(chunk_semantics);
             chunk_idx += 1;
         }
@@ -665,6 +750,7 @@ impl ProjectData {
         categories: &[DeFiCategory],
         agent_options: &AgentRunOptions,
         chunk_input_budget: Option<usize>,
+        sink: Option<&crate::checkpoint::CheckpointSink>,
     ) -> Result<Vec<ExtractedFinding>> {
         let Some(report_body) = self.build_report_prompt_body() else {
             tracing::warn!("No audit report found for project {}", self.display_id());
@@ -689,9 +775,68 @@ impl ProjectData {
             ));
         };
 
+        // Checkpoint resume: load already-completed chunks
+        let checkpointed: std::collections::HashMap<
+            u32,
+            (String, Vec<u8>),
+        > = match sink {
+            Some(s) => s
+                .load_stage(crate::checkpoint::stage::FINDING_EXTRACT)
+                .unwrap_or_default(),
+            None => std::collections::HashMap::new(),
+        };
+        if !checkpointed.is_empty() {
+            tracing::info!(
+                "Checkpoint resume: {} finding-extract chunk(s) already completed for {}",
+                checkpointed.len(),
+                self.display_id(),
+            );
+        }
+
         let mut all_findings = Vec::new();
         let mut chunk_idx = 0usize;
         while let Some(chunk) = cursor.next_chunk(chunk_budget) {
+            let hash = crate::checkpoint::chunk_hash(&chunk);
+
+            // Resume from checkpoint when the hash matches
+            if let Some((stored_hash, payload)) =
+                checkpointed.get(&(chunk_idx as u32))
+            {
+                if *stored_hash == hash {
+                    match serde_json::from_slice::<Vec<ExtractedFinding>>(
+                        payload,
+                    ) {
+                        Ok(stored) => {
+                            tracing::info!(
+                                "Chunk {} resumed from checkpoint ({} finding(s))",
+                                chunk_idx,
+                                stored.len(),
+                            );
+                            // Re-canonicalize: the stored payload is the
+                            // RAW findings; canonicalize is deterministic
+                            for finding in stored {
+                                all_findings
+                                    .push(Self::canonicalize_finding(finding)?);
+                            }
+                            chunk_idx += 1;
+                            continue;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                "Checkpoint chunk {} deserialize failed ({}); re-extracting",
+                                chunk_idx,
+                                e,
+                            );
+                        }
+                    }
+                } else {
+                    tracing::warn!(
+                        "Checkpoint chunk {} hash mismatch (source changed); re-extracting",
+                        chunk_idx,
+                    );
+                }
+            }
+
             let user_prompt = format!("{}{}", chunk, user_suffix);
             tracing::info!(
                 "Extracting findings from chunk {} (~{} tokens, done={})",
@@ -715,6 +860,31 @@ impl ProjectData {
                 chunk_idx,
                 raw_findings.len(),
             );
+
+            // Checkpoint the RAW findings (pre-canonicalize) so the
+            // resume path can re-apply the same deterministic transform
+            if let Some(sink) = sink {
+                let payload = serde_json::to_vec(&raw_findings)
+                    .map_err(|e| {
+                        KgError::other(&format!(
+                            "checkpoint serialize: {}",
+                            e
+                        ))
+                    })?;
+                if let Err(e) = sink.write_chunk(
+                    crate::checkpoint::stage::FINDING_EXTRACT,
+                    chunk_idx as u32,
+                    &hash,
+                    &payload,
+                ) {
+                    tracing::warn!(
+                        "Checkpoint write failed for chunk {}: {}",
+                        chunk_idx,
+                        e,
+                    );
+                }
+            }
+
             for finding in raw_findings {
                 all_findings.push(Self::canonicalize_finding(finding)?);
             }

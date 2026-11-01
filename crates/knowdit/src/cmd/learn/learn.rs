@@ -440,7 +440,7 @@ async fn run_pipeline(
     if concurrency <= 1 {
         for project in pending {
             match project
-                .categorize_and_extract(llm, &agent_options, None)
+                .categorize_and_extract(llm, &agent_options, None, None)
                 .await
             {
                 Ok(extract) => {
@@ -478,7 +478,7 @@ async fn run_pipeline(
             handles.spawn(async move {
                 while let Ok(project) = rx.recv().await {
                     let res = project
-                        .categorize_and_extract(&llm, &extract_opts, None)
+                        .categorize_and_extract(&llm, &extract_opts, None, None)
                         .await?;
                     out.send(Ok((project, res)))
                         .await
