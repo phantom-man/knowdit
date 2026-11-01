@@ -43,7 +43,7 @@ pub struct MergeCliArgs {
     /// (e.g. a whole KG merged in via `merge-kg`) split into batches that
     /// fan out across `--merge-concurrency`. Keep it below
     /// `--max-agent-steps` (one emit per item, plus a few finalize steps).
-    #[arg(long, default_value_t = 40)]
+    #[arg(long, default_value_t = 20)]
     pub merge_new_item_batch_size: usize,
 
     /// Fraction (0,1] of the model's context window a single prompt may fill

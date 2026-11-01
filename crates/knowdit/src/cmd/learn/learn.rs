@@ -443,10 +443,15 @@ async fn run_pipeline(
     // create per-project sinks (clear-after-merge is a follow-up for
     // the concurrent path — the tranche_runner uses sequential children).
     let checkpoint_dir = std::env::var("KNOWDIT_CHECKPOINT_DIR").ok();
-    if checkpoint_dir.is_some() {
+    if checkpoint_dir.is_some() && concurrency <= 1 {
         tracing::info!(
-            "Checkpointing ACTIVE (dir={})",
+            "Checkpointing ACTIVE (dir={}, sequential path)",
             checkpoint_dir.as_deref().unwrap_or("?"),
+        );
+    } else if checkpoint_dir.is_some() {
+        tracing::warn!(
+            "Checkpointing INACTIVE: KNOWDIT_CHECKPOINT_DIR is set but concurrency={} (concurrent path does not yet checkpoint; use --concurrency 1 for resumable extraction)",
+            concurrency,
         );
     }
 

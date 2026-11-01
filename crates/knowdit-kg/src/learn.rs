@@ -411,12 +411,26 @@ impl ProjectData {
         let mut content = prompts::project_user_prefix();
         content.push_str("## Source Files\n\n");
 
+        let lang = self.source_language().code_fence().to_string();
+
         for file in self.source_files() {
+            let path = &file.relative_path;
+
+            // Pre-filter: skip test/mock/script files entirely and strip
+            // boilerplate lines from remaining files — reduces extraction
+            // LLM input tokens 30-40% without removing audit-relevant code
+            if crate::source_filter::should_skip_file(path) {
+                content.push_str(&crate::source_filter::skip_marker(path));
+                continue;
+            }
+
+            let filtered =
+                crate::source_filter::filter_content(&file.content, &lang);
             content.push_str(&format!(
                 "### {}\n```{}\n{}\n```\n\n",
-                file.relative_path.display(),
-                self.source_language().code_fence(),
-                file.content
+                path.display(),
+                lang,
+                filtered
             ));
         }
 

@@ -477,7 +477,7 @@ impl Default for MergeChunkingOptions {
         Self {
             new_item_token_ratio: 0.8,
             concurrency: 1,
-            new_item_batch_size: 40,
+            new_item_batch_size: 20,
             field_guard: MergeFieldGuard::default(),
         }
     }
