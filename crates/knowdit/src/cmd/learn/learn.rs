@@ -437,29 +437,63 @@ async fn run_pipeline(
         pending.iter().map(|p| p.display_id()).collect::<Vec<_>>()
     );
 
+    // Checkpoint enable: KNOWDIT_CHECKPOINT_DIR=<dir> activates resumable
+    // extraction; unset = no checkpointing (byte-identical behavior).
+    // Sequential path clears per-project after merge; concurrent workers
+    // create per-project sinks (clear-after-merge is a follow-up for
+    // the concurrent path — the tranche_runner uses sequential children).
+    let checkpoint_dir = std::env::var("KNOWDIT_CHECKPOINT_DIR").ok();
+    if checkpoint_dir.is_some() {
+        tracing::info!(
+            "Checkpointing ACTIVE (dir={})",
+            checkpoint_dir.as_deref().unwrap_or("?"),
+        );
+    }
+
     if concurrency <= 1 {
         for project in pending {
+            let sink = checkpoint_dir.as_ref().map(|dir| {
+                knowdit_kg::checkpoint::CheckpointSink::new(
+                    dir,
+                    project.display_id(),
+                )
+            });
             match project
-                .categorize_and_extract(llm, &agent_options, None, None)
+                .categorize_and_extract(llm, &agent_options, None, sink.as_ref())
                 .await
             {
                 Ok(extract) => {
-                    if let Err(e) = project
+                    match project
                         .merge_and_write(db, llm, &extract, &agent_options, merge_chunking)
                         .await
                     {
-                        tracing::error!(
-                            "Failed to merge/write project {}: {}",
-                            project.display_id(),
-                            e
-                        );
+                        Ok(_) => {
+                            // merge succeeded: clear this project's
+                            // checkpoint (the data is now in the KG)
+                            if let Some(sink) = &sink {
+                                if let Err(e) = sink.clear() {
+                                    tracing::warn!(
+                                        "Checkpoint clear failed for {}: {}",
+                                        project.display_id(),
+                                        e,
+                                    );
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to merge/write project {}: {}",
+                                project.display_id(),
+                                e,
+                            );
+                        }
                     }
                 }
                 Err(e) => {
                     tracing::error!(
                         "Skipping merge for project {} (extract failed: {})",
                         project.display_id(),
-                        e
+                        e,
                     );
                 }
             }

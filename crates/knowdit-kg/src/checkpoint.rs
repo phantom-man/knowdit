@@ -49,10 +49,32 @@ impl CheckpointSink {
     ) -> io::Result<HashMap<u32, (String, Vec<u8>)>> {
         let journal = self.journal(stage)?;
         let (records, last_good_offset) = journal.load()?;
-        if records.len() < journal.load()?.0.len() {
-            // torn tail detected on the first load; heal now
+
+        // Self-heal: if the file has bytes past the last good record,
+        // a torn tail from a crash mid-append is present — truncate it
+        // NOW so the next append lands after the last good record
+        // (gate_20261101-002643 finding 1: the previous double-load
+        // comparison was dead code; compare against actual file length)
+        let file_len = match std::fs::metadata(journal.path()) {
+            Ok(m) => m.len(),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                // no journal file (cleared or first run): nothing to heal
+                return Ok(records
+                    .into_iter()
+                    .map(|r| (r.chunk_idx, (r.hash, r.payload)))
+                    .collect());
+            }
+            Err(e) => return Err(e),
+        };
+        if file_len > last_good_offset {
             journal.truncate_to(last_good_offset)?;
+            tracing::debug!(
+                "Checkpoint journal self-healed: truncated {} torn byte(s) past offset {}",
+                file_len - last_good_offset,
+                last_good_offset,
+            );
         }
+
         Ok(records
             .into_iter()
             .map(|r| (r.chunk_idx, (r.hash, r.payload)))
@@ -173,6 +195,39 @@ mod tests {
         let sink = CheckpointSink::new(&dir, "no-such-project");
         let loaded = sink.load_stage(stage::SEMANTIC_EXTRACT).unwrap();
         assert!(loaded.is_empty());
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn torn_tail_self_heals_on_load() {
+        let dir = tmpdir();
+        let sink = CheckpointSink::new(&dir, "torn-test");
+        sink.write_chunk(stage::SEMANTIC_EXTRACT, 0, "h-0", b"good")
+            .unwrap();
+
+        // Simulate a torn tail: append garbage bytes after the good record
+        let journal = Journal::new(&dir, "torn-test", stage::SEMANTIC_EXTRACT)
+            .unwrap();
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .append(true)
+            .open(journal.path())
+            .unwrap();
+        f.write_all(&[0xDE, 0xAD, 0xBE, 0xEF]).unwrap();
+
+        // Load must return the good record AND truncate the garbage
+        let loaded = sink.load_stage(stage::SEMANTIC_EXTRACT).unwrap();
+        assert_eq!(loaded.len(), 1, "good record must survive");
+        assert_eq!(loaded[&0].1, b"good");
+
+        // Write a new chunk: must land after the good record, not after
+        // the (now-truncated) garbage
+        sink.write_chunk(stage::SEMANTIC_EXTRACT, 1, "h-1", b"new")
+            .unwrap();
+        let loaded2 = sink.load_stage(stage::SEMANTIC_EXTRACT).unwrap();
+        assert_eq!(loaded2.len(), 2, "both records must be visible");
+        assert_eq!(loaded2[&1].1, b"new");
+
         std::fs::remove_dir_all(&dir).ok();
     }
 }
