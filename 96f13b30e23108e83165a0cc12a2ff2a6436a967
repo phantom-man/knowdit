@@ -1,0 +1,40 @@
+{
+ "type": "CLEAR",
+ "commit": "96f13b30e23108e83165a0cc12a2ff2a6436a967",
+ "caller": "zcode",
+ "when": "20261101-004319",
+ "files": {
+  "crates/knowdit-kg/src/checkpoint.rs": {
+   "sha": "6bc96c949fe9b9da2a0c7b753caed19ac1b93dcdb72de80711367eb7aa8af652",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261101-004317",
+   "artifact": ".adversary\\reviews\\gate_20261101-004317.md"
+  },
+  "crates/knowdit/src/cmd/learn/learn.rs": {
+   "sha": "3d3e3c6bd222649cd1983eb880d6f23b0404e16dba1a356939f2dc5f7524405e",
+   "model": "deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8",
+   "verdict": "WARN",
+   "when": "20261101-004317",
+   "artifact": ".adversary\\reviews\\gate_20261101-004317.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261101-004317.md": "model: deepseek/deepseek-v4.1-flash-1017@deepinfra/fp8 | provider: DeepInfra | usage: {'prompt_tokens': 8946, 'completion_tokens': 23128, 'total_tokens': 32074, 'cost': 0.00683677008, 'is_byok': False, 'prompt_tokens_details': {'cached_tokens': 8832, 'cache_write_tokens': 0, 'audio_tokens': 0, 'video_tokens': 0}, 'cost_details': {'upstream_inference_cost': 0.00683677008, 'upstream_inference_prompt_cost': 3.713808e-05, 'upstream_inference_completions_cost': 0.006799632}, 'completion_tokens_details': {'reasoning_tokens': 22581, 'image_tokens': 0, 'audio_tokens': 0}} | scrubbed: 0 | files: ['crates/knowdit-kg/src/checkpoint.rs', 'crates/knowdit/src/cmd/learn/learn.rs'] | prompt: gate/adversary-review@1 (cache) | caller: zcode\n\nLooking at this change set, the checkpoint self-heal fix in `checkpoint.rs` is actually sound: the old double-load comparison was indeed dead, and the new `file_len > last_good_offset` guard is validated by the added test's *second* assertion (if truncation didn't happen, appending record 1 after the garbage and re-loading would yield only 1 record, failing `assert_eq!(loaded2.len(), 2)`). The sequential-path wiring in `learn.rs` also preserves ordering (checkpoint cleared only after `merge_and_write` succeeds) and honors the \"`None` = byte-identical\" invariant.\n\nThe one real inconsistency is in the newly-added checkpoint-enable block:\n\n**LOW \u2014 `crates/knowdit/src/cmd/learn/learn.rs` \u2014 `run_pipeline` checkpoint-enable block**\n\nThe status log is emitted unconditionally when the env var is set, but the concurrent branch never creates a sink and passes `None`:\n\n```rust\n    if checkpoint_dir.is_some() {\n        tracing::info!(\n            \"Checkpointing ACTIVE (dir={})\",\n            checkpoint_dir.as_deref().unwrap_or(\"?\"),\n        );\n    }\n```\n\n```rust\n    // Sequential path clears per-project after merge; concurrent workers\n    // create per-project sinks (clear-after-merge is a follow-up for\n```\n\n```rust\n                    let res = project\n                        .categorize_and_extract(&llm, &extract_opts, None, None)\n                        .await?;\n```\n\nTrigger: `KNOWDIT_CHECKPOINT_DIR=/some/dir knowdit learn ... --concurrency 2` (or any `concurrency > 1`).\n\nImpact: the code logs `\"Checkpointing ACTIVE\"` and the added comment claims \"concurrent workers create per-project sinks\", but the concurrent branch passes `None` for the sink, so no checkpoints are written. An operator who set the env var to protect a long/expensive extraction is told checkpointing is active while it is silently absent; a crash then loses all extraction progress (re-paid LLM work). The common/default path (`concurrency == 1`, which is what `tranche_runner` uses per the comment) works correctly, and the concurrent gap itself is a pre-existing unimplemented follow-up \u2014 the newly introduced defect is the false \"ACTIVE\" signal / misleading comment, not the missing feature. The log should be gated on `concurrency <= 1` (or the comment corrected) so the status is truthful.\n\nVERDICT: WARN"
+ },
+ "adjudication": {
+  "denial": "reviews/gate_20261101-003614.md",
+  "outcomes": {
+   "cleared-unedited": 2
+  },
+  "detail": ".adversary/adjudications.json"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261101-004317.md": {
+   "embedded": "38ca46a9030e8a9de9c9fc21b44a56a5fa04323890418f94d60f83e532e5ea49",
+   "disk": "38ca46a9030e8a9de9c9fc21b44a56a5fa04323890418f94d60f83e532e5ea49"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "mac": "5d5317e77cc0524b91fe4f3f9d9921150b70e5b7578a80fd34ceaab6c0a5b01a"
+}
