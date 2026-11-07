@@ -1,0 +1,34 @@
+{
+ "type": "CLEAR",
+ "commit": "9222346e7ca134bf7741294f2f877772a8aec9d0",
+ "caller": "zcode",
+ "ladder": "ladder=owner-picks sha=5adcee98e82a",
+ "when": "20261107-010624",
+ "files": {
+  "crates/knowdit/src/cmd/learn/learn.rs": {
+   "sha": "ede748e67a2b57f134e6fcc430c487cc47e214dc3f8c4f2b3fbb0301f0786dcf",
+   "model": "@preset/gate-minimax-m3-1-flash",
+   "verdict": "WARN",
+   "when": "20261107-010622",
+   "artifact": ".adversary\\reviews\\gate_20261107-010622.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261107-010622.md": "model: @preset/gate-minimax-m3-1-flash | provider: anthropic-messages | usage: {'prompt_tokens': 5220, 'completion_tokens': 2194, 'cached_tokens': 5632, 'cost': 0.00218388} | scrubbed: 0 | ladder=owner-picks sha=5adcee98e82a | files: ['crates/knowdit/src/cmd/learn/learn.rs'] | prompt: gate/adversary-review@1 (langfuse) | caller: zcode\r\n\r\n## Findings\r\n\r\n**LOW \u2014 `crates/knowdit/src/cmd/learn/learn.rs`, concurrent branch (worker send loop / producer loop)**\r\n\r\nQuoted lines:\r\n\r\n```rust\r\n                    if out.send((project, res)).await.is_err() {\r\n                        break;\r\n                    }\r\n```\r\n\r\n```rust\r\n        for project in pending {\r\n            if tx.send(project).await.is_err() {\r\n                break;\r\n            }\r\n        }\r\n```\r\n\r\nTrigger: the concurrent worker only exits its `while let Ok(project) = rx.recv().await` loop when the channel closes or `out.send` fails; neither happens under normal operation. If a worker task dies from a panic inside `categorize_and_extract` (the task is spawned into a `JoinSet` that is never joined, so its panic is never observed), that project and any project still sitting in `tx` are dropped: the `tx.send(...).is_err()` `break` discards the remaining `pending` projects without recording a failure. `failures` stays empty (or understates the loss), `pipeline_outcome(total, failures)` then returns `Ok(())`, and the run logs `\"Learning complete.\"` and exits successfully even though those projects were never learned.\r\n\r\nImpact: the exact false-success condition this change set claims to eliminate (\"A run that lost a project must NOT report success\") remains reachable in the concurrent path, via a worker panic rather than an `Err` return; the operator sees a successful exit with an unchanged KG. The sequential path is unaffected because a panic there terminates the process.\r\n\r\nVERDICT: WARN"
+ },
+ "adjudication": {
+  "denial": "reviews/gate_20261107-004223.md",
+  "outcomes": {
+   "fixed": 2
+  },
+  "detail": ".adversary/adjudications.json"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261107-010622.md": {
+   "embedded": "db396842f88ce585dcde83c90c7c77e2fb694ffd046fd07c1a5ef0bc917c50f4",
+   "disk": "db396842f88ce585dcde83c90c7c77e2fb694ffd046fd07c1a5ef0bc917c50f4"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "mac": "d8d23c5c2befced1001109b338001ef5de6ff2772bc49532ee7c13278eeb6136"
+}
