@@ -1,0 +1,41 @@
+{
+ "type": "CLEAR",
+ "commit": "bbfb52e0faa63080377fb10549443a087ac55b8a",
+ "caller": "zcode",
+ "ladder": "ladder=owner-picks sha=5adcee98e82a",
+ "when": "20261106-215239",
+ "files": {
+  "crates/knowdit-kg/src/agent_runner.rs": {
+   "sha": "fadeaf4dc16c26d8d448512d464c5cf80863f75bbd47a2cc6596c11f87f2caa2",
+   "model": "@preset/gate-minimax-m3-1-flash",
+   "verdict": "CLEAR",
+   "when": "20261106-215236",
+   "artifact": ".adversary\\reviews\\gate_20261106-215236.md"
+  },
+  "crates/knowdit-kg/src/agents.rs": {
+   "sha": "e9d77b2ad91836e8604149c186b5d625ac0bc18797a6220183a8224b0ab86d59",
+   "model": "@preset/gate-minimax-m3-1-flash",
+   "verdict": "CLEAR",
+   "when": "20261106-215236",
+   "artifact": ".adversary\\reviews\\gate_20261106-215236.md"
+  },
+  "crates/knowdit/src/cmd/learn/learn.rs": {
+   "sha": "ae499fee1b351c2536ae4abfd5d0850feb054dae726e419e6fd95b592b284816",
+   "model": "@preset/gate-minimax-m3-1-flash",
+   "verdict": "CLEAR",
+   "when": "20261106-215236",
+   "artifact": ".adversary\\reviews\\gate_20261106-215236.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261106-215236.md": "model: @preset/gate-minimax-m3-1-flash | provider: anthropic-messages | usage: {'prompt_tokens': 29027, 'completion_tokens': 760, 'cached_tokens': 896, 'cost': 0.00482349} | scrubbed: 0 | ladder=owner-picks sha=5adcee98e82a | files: ['crates/knowdit-kg/src/agent_runner.rs', 'crates/knowdit-kg/src/agents.rs', 'crates/knowdit/src/cmd/learn/learn.rs'] | prompt: gate/adversary-review@1 (langfuse) | caller: zcode\r\n\r\nVERDICT: CLEAR"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261106-215236.md": {
+   "embedded": "f32016538b0810d04f2ee7721811f28245114d792f26a62e3a0a625ceaf2c829",
+   "disk": "f32016538b0810d04f2ee7721811f28245114d792f26a62e3a0a625ceaf2c829"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "mac": "322a914c47942a8461abc335e5982f36ded95b2336728a8b1e2490118a032457"
+}
