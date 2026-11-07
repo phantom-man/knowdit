@@ -1,0 +1,34 @@
+{
+ "type": "CLEAR",
+ "commit": "75496762914c0afaf6c3472c196eaa73089287a8",
+ "caller": "zcode",
+ "ladder": "ladder=owner-picks sha=5adcee98e82a",
+ "when": "20261107-015856",
+ "files": {
+  "crates/knowdit/src/cmd/learn/learn.rs": {
+   "sha": "2464a78bdef53cd2e386d60cd779ce0f83ab4d48d4b72a5e16873bbb01489cb4",
+   "model": "@preset/gate-minimax-m3-1-flash",
+   "verdict": "CLEAR",
+   "when": "20261107-015855",
+   "artifact": ".adversary\\reviews\\gate_20261107-015855.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261107-015855.md": "model: @preset/gate-minimax-m3-1-flash | provider: anthropic-messages | usage: {'prompt_tokens': 8888, 'completion_tokens': 4361, 'cached_tokens': 3840, 'cost': 0.0040074} | scrubbed: 0 | ladder=owner-picks sha=5adcee98e82a | files: ['crates/knowdit/src/cmd/learn/learn.rs'] | prompt: gate/adversary-review@1 (langfuse) | caller: zcode\r\n\r\nI examined the change against the provided file bytes, focusing on the new project-identity accounting, the concurrent worker/JoinSet lifecycle, and the failure-count arithmetic.\r\n\r\nVerified points:\r\n\r\n- `total` is computed as `pending.len() + lost.len()`, where `lost` initially contains only projects dropped by `is_completed` errors, so `total` equals the number of projects actually intended to be learned.\r\n- In the sequential branch, every project reaches exactly one of: successful merge, `lost.push(... \"merge/write\" ...)`, or `lost.push(... \"extract\" ...)`. There is no third exit path.\r\n- In the concurrent branch, projects that are never delivered (`tx.send` failure), or that are stranded by a worker panic, are captured by the `pending_ids` snapshot taken before `pending` is consumed, and are named individually by the `unaccounted` computation. The `accounted` set is built from the same identity space (`project.display_id()`) used by `pending_ids`, so the collision case would require two genuinely distinct projects sharing one `display_id`, which is not demonstrated by the provided bytes and would in any case be the same logical project id.\r\n- `lost` is never populated from worker-join diagnostics, so the panic diagnostic cannot inflate the failure count \u2014 the stated `gate_20261107-013907` claim holds.\r\n- The `drop(accounted)` before mutating `lost` is necessary and correctly ordered, so the borrow-checking concern is handled.\r\n- The `pending.is_empty()` branch propagates the error via `pipeline_outcome(total, lost)?` before the `return Ok(())`, so the \"every project was lost before the pipeline could start\" case still fails closed.\r\n- Joining the `JoinSet` after the receive loop terminates is safe: the loop only ends when all worker sender clones are dropped, i.e. after every worker has exited, so `join_next()` cannot block indefinitely.\r\n- Checkpoint clearing on success and retention on failure in the sequential path match the resume semantics described.\r\n\r\nNo concrete trigger was found where the new logic produces a wrong success/failure verdict, loses a project identity, or breaks a caller.\r\n\r\nVERDICT: CLEAR"
+ },
+ "adjudication": {
+  "denial": "reviews/gate_20261107-013907.md",
+  "outcomes": {
+   "fixed": 2
+  },
+  "detail": ".adversary/adjudications.json"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261107-015855.md": {
+   "embedded": "634cdaaf5312bfc13d05e63d1dbe86d2e83f564aeec174bcd927f06aafd200ed",
+   "disk": "634cdaaf5312bfc13d05e63d1dbe86d2e83f564aeec174bcd927f06aafd200ed"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "mac": "fce18c9c5b1a5d5554f7eba3a34028f3e7a92ba44af8815c42720bfb734c86cd"
+}
