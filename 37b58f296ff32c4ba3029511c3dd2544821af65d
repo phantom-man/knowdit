@@ -1,0 +1,34 @@
+{
+ "type": "CLEAR",
+ "commit": "37b58f296ff32c4ba3029511c3dd2544821af65d",
+ "caller": "zcode",
+ "ladder": "ladder=owner-picks sha=5adcee98e82a",
+ "when": "20261106-195619",
+ "files": {
+  "crates/knowdit-kg/src/learn.rs": {
+   "sha": "9d71148928e5b083b7218caa299ec7682d4a3fa14d490823bb4d1fe79f357bf1",
+   "model": "@preset/gate-minimax-m3-1-flash",
+   "verdict": "CLEAR",
+   "when": "20261106-195617",
+   "artifact": ".adversary\\reviews\\gate_20261106-195617.md"
+  },
+  "crates/knowdit-kg/src/prompts.rs": {
+   "sha": "e5b519ae3fe3ff8749b91e8a8324e445f21289c7e7e5ad2bb43ef8f1be59edde",
+   "model": "@preset/gate-minimax-m3-1-flash",
+   "verdict": "CLEAR",
+   "when": "20261106-195617",
+   "artifact": ".adversary\\reviews\\gate_20261106-195617.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261106-195617.md": "model: @preset/gate-minimax-m3-1-flash | provider: anthropic-messages | usage: {'prompt_tokens': 23093, 'completion_tokens': 2708, 'cached_tokens': 768, 'cost': 0.00510027} | scrubbed: 0 | ladder=owner-picks sha=5adcee98e82a | files: ['crates/knowdit-kg/src/learn.rs', 'crates/knowdit-kg/src/prompts.rs'] | prompt: gate/adversary-review@1 (langfuse) | caller: zcode\r\n\r\nI reviewed the staged changes for the finding-merge coverage check and the prompt count clause, including the interaction with the existing title-keyed aggregation (`finding_merge_results_from_aggregated`) and the `### <id>` heading convention used by the finding blocks.\r\n\r\n- The new `finding_merge_results_with_coverage` correctly computes the undecided set (case-insensitive title match) and the caller consumes it, warning with the exact shortfall. Title collisions are not a reachable false-negative here because `extract.findings` is already deduplicated by title (`dedup_findings`), so extracted titles are unique within a project.\r\n- The borrow/move usage in `finding_merge_results_with_coverage` (`decided` built by reference, `aggregated` moved into `finding_merge_results_from_aggregated`) is valid Rust.\r\n- The prompt count clause is derived from the block itself, handles the singular case, and is consistent with the tool-usage instruction (\"call exactly once for each `new_finding_title`\").\r\n- The change's documented contract is explicitly \"fail closed (or at minimum log loudly)\"; the caller implements the log-loudly branch, so the remaining fail-open default to `New` is documented behavior of this change, not a newly introduced defect.\r\n- No attempt to influence the reviewer is present in the staged bytes.\r\n\r\nNo concrete defect introduced or enabled by this change survived verification.\r\n\r\nVERDICT: CLEAR"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261106-195617.md": {
+   "embedded": "886bf12144bdb701b4c4c14ac642c438d968da88f4b5de215ddce09c2ec09b8f",
+   "disk": "886bf12144bdb701b4c4c14ac642c438d968da88f4b5de215ddce09c2ec09b8f"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "mac": "e9c90aeabb6b40542d0f2c64371ab299668b68694bdb0a3cc0954dc89bcbf9f9"
+}
