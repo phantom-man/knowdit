@@ -396,6 +396,32 @@ impl LearnSherlockArgs {
     }
 }
 
+/// Decide the pipeline's outcome from the per-project failure list.
+///
+/// A run that lost a project must NOT report success: the caller keys on the
+/// exit code, and `tranche_runner.classify_result()` keys on the
+/// `"fully processed and saved"` marker that only a successful merge emits.
+/// Returning `Ok(())` after a swallowed failure made a failed contest
+/// indistinguishable from a completed one (2026-11-06 c4-1052: the final
+/// finding-merge chunk hit the output ceiling, the process logged
+/// "Learning complete." and exited 0 with the KG unchanged).
+///
+/// Every failure is named in the returned error so the operator sees WHICH
+/// projects were lost, not just that something went wrong.
+fn pipeline_outcome(total: usize, failures: Vec<String>) -> Result<()> {
+    if failures.is_empty() {
+        return Ok(());
+    }
+    let succeeded = total.saturating_sub(failures.len());
+    Err(color_eyre::eyre::eyre!(
+        "{} of {} project(s) failed; {} succeeded. Failures: {}",
+        failures.len(),
+        total,
+        succeeded,
+        failures.join("; ")
+    ))
+}
+
 /// Shared pipeline: categorize+extract concurrently, then merge+write each
 /// project serially as soon as extraction finishes.
 async fn run_pipeline(
@@ -413,6 +439,17 @@ async fn run_pipeline(
         return Ok(());
     }
 
+    // Per-project failures are COLLECTED, not swallowed: a run that lost a
+    // project must not report success. The caller keys on the exit code (and
+    // on the "fully processed and saved" marker), so returning Ok(()) here
+    // made a failed contest indistinguishable from a completed one
+    // (2026-11-06 c4-1052: merge/write failed, process exited 0).
+    //
+    // Declared before the completion filter so a project lost to a DB read
+    // error is counted too - it is dropped from `pending`, and without this
+    // it would vanish from the run with no trace in the outcome.
+    let mut failures: Vec<String> = Vec::new();
+
     // Filter out already-completed projects
     let mut pending = Vec::new();
     for p in all_projects {
@@ -421,15 +458,28 @@ async fn run_pipeline(
                 tracing::info!("Project {} already completed, skipping", p.display_id());
             }
             Ok(false) => pending.push(p),
-            Err(e) => tracing::error!("Error checking project {}: {}", p.display_id(), e),
+            Err(e) => {
+                tracing::error!("Error checking project {}: {}", p.display_id(), e);
+                failures.push(format!("is_completed {}: {}", p.display_id(), e));
+            }
         }
     }
 
+    // Projects we intended to learn: the ones still pending plus the ones
+    // already lost above. Already-completed projects are not part of the run.
+    let total = pending.len() + failures.len();
+
     if pending.is_empty() {
-        tracing::info!("All projects already completed.");
-        if link {
-            link_options.link_pending_findings(db, llm).await?;
+        if failures.is_empty() {
+            tracing::info!("All projects already completed.");
+            if link {
+                link_options.link_pending_findings(db, llm).await?;
+            }
+            return Ok(());
         }
+        // Every project was lost before the pipeline could start - fail closed
+        // rather than reporting a clean run.
+        pipeline_outcome(total, failures)?;
         return Ok(());
     }
 
@@ -457,6 +507,9 @@ async fn run_pipeline(
             concurrency,
         );
     }
+
+    // `failures` and `total` are declared above the completion filter so a
+    // project lost to a DB read error is counted as well.
 
     if concurrency <= 1 {
         for project in pending {
@@ -494,6 +547,11 @@ async fn run_pipeline(
                                 project.display_id(),
                                 e,
                             );
+                            failures.push(format!(
+                                "merge/write {}: {}",
+                                project.display_id(),
+                                e
+                            ));
                         }
                     }
                 }
@@ -503,13 +561,21 @@ async fn run_pipeline(
                         project.display_id(),
                         e,
                     );
+                    failures.push(format!("extract {}: {}", project.display_id(), e));
                 }
             }
         }
     } else {
         let (tx, rx) = async_channel::bounded::<ProjectData>(pending.len() + 1);
-        let (out_tx, mut out_rx) =
-            mpsc::channel::<Result<(ProjectData, ExtractResult)>>(concurrency + 1);
+        // The Result travels WITH its project so a failed extraction can be
+        // attributed to the project that caused it (and counted in
+        // `failures`) instead of being dropped by an unjoined JoinSet.
+        // Spelled out because this file's bare `Result` is color_eyre's,
+        // while `categorize_and_extract` returns `knowdit_kg::Result`.
+        let (out_tx, mut out_rx) = mpsc::channel::<(
+            ProjectData,
+            std::result::Result<ExtractResult, KgError>,
+        )>(concurrency + 1);
 
         let mut handles = JoinSet::new();
         for _ in 0..concurrency {
@@ -519,12 +585,18 @@ async fn run_pipeline(
             let extract_opts = agent_options.clone();
             handles.spawn(async move {
                 while let Ok(project) = rx.recv().await {
+                    // An extraction failure is REPORTED, not returned: the
+                    // JoinSet is never joined, so `?` here dropped the error
+                    // on the floor and the project vanished from the run
+                    // (gate_20261107-004223 finding 1). The worker also keeps
+                    // draining the queue so one bad project cannot strand the
+                    // rest.
                     let res = project
                         .categorize_and_extract(&llm, &extract_opts, None, None)
-                        .await?;
-                    out.send(Ok((project, res)))
-                        .await
-                        .expect("can not send out project");
+                        .await;
+                    if out.send((project, res)).await.is_err() {
+                        break;
+                    }
                 }
                 Ok::<_, KgError>(())
             });
@@ -533,16 +605,45 @@ async fn run_pipeline(
         drop(rx);
 
         for project in pending {
-            tx.send(project).await.expect("fail to send out");
+            if tx.send(project).await.is_err() {
+                break;
+            }
         }
 
         drop(tx);
-        while let Some(handle) = out_rx.recv().await {
-            let (project, extract_res): (ProjectData, ExtractResult) = handle?;
-
-            project
-                .merge_and_write(db, llm, &extract_res, &agent_options, merge_chunking)
-                .await?;
+        while let Some((project, extract_res)) = out_rx.recv().await {
+            match extract_res {
+                Ok(extract_res) => {
+                    // A merge failure is RECORDED and the loop continues: a
+                    // `?` here abandoned every already-extracted project still
+                    // buffered in out_rx, discarding paid work and skipping
+                    // the aggregated report (gate_20261107-005525). The
+                    // sequential branch already behaves this way.
+                    if let Err(e) = project
+                        .merge_and_write(db, llm, &extract_res, &agent_options, merge_chunking)
+                        .await
+                    {
+                        tracing::error!(
+                            "Failed to merge/write project {}: {}",
+                            project.display_id(),
+                            e,
+                        );
+                        failures.push(format!(
+                            "merge/write {}: {}",
+                            project.display_id(),
+                            e
+                        ));
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "Skipping merge for project {} (extract failed: {})",
+                        project.display_id(),
+                        e,
+                    );
+                    failures.push(format!("extract {}: {}", project.display_id(), e));
+                }
+            }
         }
     }
 
@@ -550,6 +651,124 @@ async fn run_pipeline(
         link_options.link_pending_findings(db, llm).await?;
     }
 
+    // Checked AFTER the link stage so the projects that succeeded still get
+    // their links; the run then fails closed instead of printing the
+    // completion marker over a lost project.
+    pipeline_outcome(total, failures)?;
+
     tracing::info!("Learning complete.");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pipeline_outcome;
+
+    /// The 2026-11-06 c4-1052 regression: one project's merge/write failed,
+    /// the pipeline swallowed it, printed "Learning complete." and exited 0.
+    /// A lost project must surface as an Err.
+    #[test]
+    fn a_failed_project_fails_the_run() {
+        let err = pipeline_outcome(1, vec!["merge/write c4-1052: reach output length limit".into()])
+            .expect_err("a run that lost its only project must not report success");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("1 of 1 project(s) failed"),
+            "error must state the loss count, got: {msg}"
+        );
+        assert!(
+            msg.contains("c4-1052"),
+            "error must name the lost project, got: {msg}"
+        );
+        assert!(
+            msg.contains("reach output length limit"),
+            "error must carry the underlying cause, got: {msg}"
+        );
+    }
+
+    /// A clean run stays a clean run - the fix must not turn success into
+    /// failure.
+    #[test]
+    fn a_clean_run_succeeds() {
+        assert!(pipeline_outcome(3, Vec::new()).is_ok());
+    }
+
+    /// Partial loss is still a failure, and the message distinguishes the
+    /// survivors from the losses.
+    #[test]
+    fn partial_loss_reports_both_counts() {
+        let err = pipeline_outcome(
+            3,
+            vec!["extract c4-1: boom".into(), "merge/write c4-2: bang".into()],
+        )
+        .expect_err("2 of 3 lost must fail");
+        let msg = err.to_string();
+        assert!(msg.contains("2 of 3 project(s) failed"), "got: {msg}");
+        assert!(msg.contains("1 succeeded"), "got: {msg}");
+        assert!(msg.contains("c4-1") && msg.contains("c4-2"), "got: {msg}");
+    }
+
+    /// Every failure is named, not just the first - an operator needs the
+    /// whole list to know what to re-run.
+    #[test]
+    fn every_failure_is_named() {
+        let failures: Vec<String> = (0..5).map(|i| format!("merge/write c4-{i}: e{i}")).collect();
+        let msg = pipeline_outcome(5, failures).unwrap_err().to_string();
+        for i in 0..5 {
+            assert!(msg.contains(&format!("c4-{i}")), "missing c4-{i} in: {msg}");
+        }
+    }
+
+    /// gate_20261107-004223 finding 2: a project whose `is_completed` check
+    /// errored is dropped from `pending`. It must still be counted, or the
+    /// run reports success having never learned it.
+    #[test]
+    fn a_project_lost_to_a_completion_check_error_fails_the_run() {
+        // One project reached the pipeline, one was lost to the DB error.
+        let err = pipeline_outcome(2, vec!["is_completed c4-9: database is locked".into()])
+            .expect_err("a project lost before the pipeline must fail the run");
+        let msg = err.to_string();
+        assert!(msg.contains("1 of 2 project(s) failed"), "got: {msg}");
+        assert!(msg.contains("c4-9"), "got: {msg}");
+        assert!(msg.contains("database is locked"), "got: {msg}");
+    }
+
+    /// gate_20261107-004223 finding 1: an extraction failure in the
+    /// concurrent path used to be dropped by an unjoined JoinSet. It now
+    /// reaches `failures` with the project's identity attached.
+    #[test]
+    fn a_concurrent_extraction_failure_fails_the_run() {
+        let err = pipeline_outcome(
+            3,
+            vec!["extract c4-77: reach output length limit".into()],
+        )
+        .expect_err("a concurrent extraction loss must fail the run");
+        let msg = err.to_string();
+        assert!(msg.contains("1 of 3 project(s) failed"), "got: {msg}");
+        assert!(msg.contains("c4-77"), "got: {msg}");
+        assert!(msg.contains("reach output length limit"), "got: {msg}");
+    }
+
+    /// gate_20261107-005525: the concurrent branch used to `?` on the first
+    /// merge failure, abandoning every already-extracted project still
+    /// buffered. Multiple losses must all be reported in ONE aggregated
+    /// error, not just the first.
+    #[test]
+    fn a_concurrent_merge_failure_is_aggregated_not_short_circuited() {
+        let err = pipeline_outcome(
+            4,
+            vec![
+                "merge/write c4-10: boom".into(),
+                "merge/write c4-11: bang".into(),
+                "extract c4-12: crash".into(),
+            ],
+        )
+        .expect_err("3 of 4 lost must fail");
+        let msg = err.to_string();
+        assert!(msg.contains("3 of 4 project(s) failed"), "got: {msg}");
+        assert!(msg.contains("1 succeeded"), "got: {msg}");
+        for id in ["c4-10", "c4-11", "c4-12"] {
+            assert!(msg.contains(id), "missing {id} in: {msg}");
+        }
+    }
 }
