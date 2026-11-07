@@ -1098,10 +1098,55 @@ impl ProjectData {
             label_root: format!("finding-merge-{}", self.display_id()),
         };
         let aggregated = merger.run().await?;
-        Ok(Self::finding_merge_results_from_aggregated(
-            &extract.findings,
-            aggregated,
-        ))
+        // Coverage check (2026-11-06): a model that under-emits merge
+        // decisions would otherwise silently turn every undecided finding
+        // into a NEW canonical. Log loudly with the exact shortfall so a
+        // model swap (e.g. a small fast model on this stage) cannot
+        // corrupt the KG unnoticed.
+        let (results, missing) =
+            Self::finding_merge_results_with_coverage(&extract.findings, aggregated);
+        if !missing.is_empty() {
+            tracing::warn!(
+                "finding-merge COVERAGE SHORTFALL for {}: {}/{} findings received no \
+                 decision and were defaulted to NEW: {:?}",
+                self.display_id(),
+                missing.len(),
+                extract.findings.len(),
+                missing,
+            );
+        }
+        Ok(results)
+    }
+
+    /// Coverage-aware variant of [`Self::finding_merge_results_from_aggregated`].
+    ///
+    /// MEASURED DEFECT (2026-11-06): the plain variant maps a MISSING
+    /// decision to `FindingMergeAction::New`. A model that under-emits
+    /// decisions is therefore silently tolerated - measured on
+    /// meta-llama/llama-3.1-8b-instruct, 3 of 12 decisions were returned
+    /// without an explicit count in the prompt, which would have created
+    /// 9 duplicate canonicals with no error anywhere.
+    ///
+    /// This variant returns the titles of every finding that received NO
+    /// decision, so the caller can fail closed (or at minimum log loudly)
+    /// instead of silently duplicating the knowledge graph.
+    fn finding_merge_results_with_coverage(
+        extracted: &[ExtractedFinding],
+        aggregated: Vec<AggregatedFindingMergeDecision>,
+    ) -> (Vec<FindingMergeResult>, Vec<String>) {
+        let decided: std::collections::HashSet<String> = aggregated
+            .iter()
+            .map(|d| d.new_finding_title.to_lowercase())
+            .collect();
+        let missing: Vec<String> = extracted
+            .iter()
+            .filter(|f| !decided.contains(&f.title.to_lowercase()))
+            .map(|f| f.title.clone())
+            .collect();
+        (
+            Self::finding_merge_results_from_aggregated(extracted, aggregated),
+            missing,
+        )
     }
 
     fn finding_merge_results_from_aggregated(
@@ -1209,3 +1254,82 @@ pub(crate) fn sanitize_prompt_prefix(value: &str) -> String {
 // existing canonical id set. With the agent-tool form, validation is
 // inlined into `project_*_merge_results`: decisions referencing an
 // unknown id are downgraded to `New` (and logged) rather than rejected.
+
+#[cfg(test)]
+mod merge_coverage_tests {
+    use super::*;
+    use knowdit_kg_model::audit_finding::FindingSeverity;
+    use knowdit_kg_model::finding_category::VulnerabilityCategory;
+
+    fn finding(title: &str) -> ExtractedFinding {
+        ExtractedFinding {
+            title: title.to_string(),
+            severity: FindingSeverity::High,
+            category: VulnerabilityCategory::Arithmetic,
+            subcategory: "s".to_string(),
+            root_cause: "rc".to_string(),
+            description: "d".to_string(),
+            patterns: "p".to_string(),
+            exploits: "e".to_string(),
+        }
+    }
+
+    fn decision(title: &str, targets: Vec<i32>) -> AggregatedFindingMergeDecision {
+        AggregatedFindingMergeDecision {
+            new_finding_title: title.to_string(),
+            merge_target_ids: targets,
+            updated_description: None,
+            updated_patterns: None,
+            updated_exploits: None,
+            appended_description: None,
+            appended_patterns: None,
+            appended_exploits: None,
+        }
+    }
+
+    /// MEASURED DEFECT (2026-11-06): a model that under-emits merge
+    /// decisions is SILENTLY tolerated. `finding_merge_results_from_aggregated`
+    /// maps a missing decision to `FindingMergeAction::New`, so a model
+    /// returning 3 of 12 decisions produces 9 duplicate canonicals with
+    /// no error anywhere. Measured on meta-llama/llama-3.1-8b-instruct:
+    /// 3 of 12 without an explicit count in the prompt.
+    ///
+    /// The aggregation must therefore REPORT the shortfall so the caller
+    /// can fail closed instead of silently duplicating the KG.
+    #[test]
+    fn missing_decisions_are_reported_not_silently_new() {
+        let extracted = vec![finding("a"), finding("b"), finding("c")];
+        // only ONE decision supplied for THREE findings
+        let aggregated = vec![decision("a", vec![7])];
+        let (results, missing) =
+            ProjectData::finding_merge_results_with_coverage(&extracted, aggregated);
+        assert_eq!(results.len(), 3, "every finding still gets a result");
+        assert_eq!(
+            missing,
+            vec!["b".to_string(), "c".to_string()],
+            "the two undecided findings must be reported by title"
+        );
+    }
+
+    /// Full coverage reports nothing missing.
+    #[test]
+    fn full_coverage_reports_no_shortfall() {
+        let extracted = vec![finding("a"), finding("b")];
+        let aggregated = vec![decision("a", vec![7]), decision("b", vec![])];
+        let (results, missing) =
+            ProjectData::finding_merge_results_with_coverage(&extracted, aggregated);
+        assert_eq!(results.len(), 2);
+        assert!(missing.is_empty(), "no shortfall when every finding is decided");
+    }
+
+    /// Title matching is case-insensitive (the existing behaviour), so a
+    /// decision differing only in case must NOT count as missing.
+    #[test]
+    fn coverage_matching_is_case_insensitive() {
+        let extracted = vec![finding("Missing Slippage Check")];
+        let aggregated = vec![decision("missing slippage check", vec![7])];
+        let (_results, missing) =
+            ProjectData::finding_merge_results_with_coverage(&extracted, aggregated);
+        assert!(missing.is_empty(), "case-only difference is not a shortfall");
+    }
+}

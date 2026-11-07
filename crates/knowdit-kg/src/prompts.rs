@@ -388,6 +388,30 @@ Output strict JSON:
 }
 
 pub fn merge_findings_user_message(existing_findings: &str, new_findings: &str) -> String {
+    // MEASURED (2026-11-06): a small model under-emits merge decisions
+    // unless the prompt states the exact count. On
+    // meta-llama/llama-3.1-8b-instruct with 12 new findings, "call once
+    // for each" produced 3 decisions; "exactly 12, do not skip" produced
+    // 12. A shortfall is not benign - a missing decision is mapped to
+    // FindingMergeAction::New, so skipped findings silently become
+    // duplicate canonicals. Count the `### <id>` headings in the block.
+    let n_new = new_findings
+        .lines()
+        .filter(|l| l.trim_start().starts_with("### "))
+        .count();
+    let count_clause = if n_new == 1 {
+        "There is exactly 1 new finding below. You MUST call \
+         `emit_finding_merge_decision` exactly once for it. Do not skip it."
+            .to_string()
+    } else {
+        format!(
+            "There are exactly {n_new} new findings below. You MUST call \
+             `emit_finding_merge_decision` exactly {n_new} times - once for \
+             EACH of the {n_new} `### <id>` headings, in order. Do not skip \
+             any, and do not stop early. A finding with no matching canonical \
+             still gets a call, with `merge_target_ids: []`."
+        )
+    };
     format!(
         r#"You are given vulnerability-pattern data to reconcile.
 
@@ -400,6 +424,8 @@ pub fn merge_findings_user_message(existing_findings: &str, new_findings: &str) 
 {new_findings}
 
 ## Instructions
+
+{count_clause}
 
 For each newly extracted finding, decide whether it should be merged with one or more existing findings in the knowledge base or added as a new finding (emit `merge_target_ids: []`).
 
@@ -678,4 +704,63 @@ pub fn finding_link_finding_entry(
 
 "#
     )
+}
+
+#[cfg(test)]
+mod merge_prompt_tests {
+    use super::*;
+
+    /// MEASURED DEFECT (2026-11-06): the finding-merge prompt said "call
+    /// exactly once for each new_finding_title listed above" but never
+    /// stated HOW MANY there were. Measured on
+    /// meta-llama/llama-3.1-8b-instruct with 12 new findings:
+    ///   - without an explicit count: 3 of 12 decisions emitted
+    ///   - with "exactly 12, ids 20-31, do not skip": 12 of 12
+    /// A shortfall is not benign: `finding_merge_results_from_aggregated`
+    /// maps a MISSING decision to `FindingMergeAction::New`, so 9 skipped
+    /// findings would silently become 9 duplicate canonicals.
+    ///
+    /// The prompt must therefore state the count explicitly.
+    #[test]
+    fn merge_prompt_states_the_new_finding_count() {
+        let existing = "### 3\n- Title: swap() lacks slippage protection\n";
+        let new = "### 20\n- Title: Missing slippage check on swap()\n\
+                   ### 21\n- Title: Reentrancy in withdraw()\n\
+                   ### 22\n- Title: Unchecked return value\n";
+        let p = merge_findings_user_message(existing, new);
+        assert!(
+            p.contains("exactly 3"),
+            "prompt must state the exact count of new findings (3); \
+             without it a small model silently under-emits. Got:\n{p}"
+        );
+    }
+
+    /// The count must be derived from the block, not hardcoded, and must
+    /// track the actual number of `### <id>` headings.
+    #[test]
+    fn merge_prompt_count_tracks_the_block() {
+        let existing = "### 3\n- Title: x\n";
+        for n in [1usize, 5, 12] {
+            let new: String = (0..n)
+                .map(|i| format!("### {}\n- Title: t{}\n", 100 + i, i))
+                .collect();
+            let p = merge_findings_user_message(existing, &new);
+            assert!(
+                p.contains(&format!("exactly {n}")),
+                "prompt must state exactly {n} for a {n}-finding block"
+            );
+        }
+    }
+
+    /// A single new finding must read naturally ("exactly 1"), not
+    /// "exactly 1 findings".
+    #[test]
+    fn merge_prompt_singular_is_grammatical() {
+        let p = merge_findings_user_message("### 3\n- Title: x\n",
+                                            "### 20\n- Title: y\n");
+        assert!(p.contains("exactly 1 new finding"),
+                "singular form required for a 1-finding block");
+        assert!(!p.contains("exactly 1 new findings"),
+                "must not emit the plural for a single finding");
+    }
 }
