@@ -71,9 +71,10 @@ pub struct AgentRunOptions {
 
 impl Default for AgentRunOptions {
     fn default() -> Self {
-        // Single source of truth for the fallback step cap. Keep in sync
-        // with the clap default in `MergeCliArgs::max_agent_steps` /
-        // `ExtractSemanticsArgs::max_agent_steps` (both default to 60).
+        // Fallback step cap for callers that do not supply one. The learn
+        // pipeline does NOT use this: it passes `MergeCliArgs::max_agent_steps`,
+        // whose clap default is 160. The audit-side `ExtractSemanticsArgs`
+        // defaults to 60. Keep this in sync if either clap default changes.
         Self::new(60)
     }
 }

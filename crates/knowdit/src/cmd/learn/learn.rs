@@ -22,7 +22,8 @@ pub struct LearnArgs {
     #[arg(long = "project", short = 'p')]
     pub projects: Vec<String>,
 
-    /// Number of projects to categorize+extract concurrently (merge is always serial)
+    /// Number of projects to categorize+extract concurrently. Merge has its
+    /// own knob: `--merge-concurrency` (see `MergeCliArgs`).
     #[arg(long, default_value_t = 1)]
     pub concurrency: usize,
 
@@ -62,7 +63,8 @@ pub struct LearnC4Args {
     #[arg(long, default_value_t = 5)]
     pub limit: usize,
 
-    /// Number of projects to categorize+extract concurrently (merge is always serial)
+    /// Number of projects to categorize+extract concurrently. Merge has its
+    /// own knob: `--merge-concurrency` (see `MergeCliArgs`).
     #[arg(long, default_value_t = 1)]
     pub concurrency: usize,
 
@@ -109,7 +111,8 @@ pub struct LearnMovesArgs {
     #[arg(long, value_enum, value_delimiter = ',')]
     pub platforms: Vec<MovePlatformArg>,
 
-    /// Number of projects to categorize+extract concurrently (merge is always serial)
+    /// Number of projects to categorize+extract concurrently. Merge has its
+    /// own knob: `--merge-concurrency` (see `MergeCliArgs`).
     #[arg(long, default_value_t = 1)]
     pub concurrency: usize,
 

@@ -698,6 +698,10 @@ impl FinalizeSemanticMergeTool {
 /// out-of-chunk IDs at the tool boundary (the agent gets the rejection
 /// as a tool-result string and can retry).
 pub struct SemanticMergeChunkRunner {
+    /// Position of this unit in submission order. The pool returns results in
+    /// COMPLETION order; the aggregator's `adopt_update` keeps the first
+    /// non-empty value, so results are re-sorted by this index before folding.
+    pub unit_idx: usize,
     pub llm: LLM,
     pub options: AgentRunOptions,
     pub system_prompt: String,
@@ -870,6 +874,7 @@ impl SemanticMerger {
                 .collect(),
         );
         SemanticMergeChunkRunner {
+            unit_idx: idx,
             llm: self.llm.clone(),
             options: self.agent_options.scoped(&debug_scope),
             system_prompt: crate::prompts::GENERAL_ROLE_SYSTEM.to_string(),
@@ -884,8 +889,10 @@ impl SemanticMerger {
 
     /// Dispatch (new-item batch × candidate chunk) work units through a
     /// shared bounded-concurrency pool. Each unit's agent sees one batch of
-    /// new semantics plus one candidate chunk. Result order is irrelevant —
-    /// the aggregator folds every unit's decisions by name.
+    /// new semantics plus one candidate chunk. Results are re-sorted into
+    /// submission order before folding: the aggregator's `adopt_update` keeps
+    /// the FIRST non-empty value, so completion order would make the surviving
+    /// text depend on network timing.
     async fn dispatch_batched(
         &self,
         chunks: &[Vec<CanonicalWithChildren<semantic_node::Model>>],
@@ -913,37 +920,43 @@ impl SemanticMerger {
     }
 
     /// Run pre-built merge-chunk runners through a bounded-concurrency pool.
-    /// Results come back in completion order (the caller aggregates by name, so
-    /// order does not matter).
+    /// Results are returned in SUBMISSION order, not completion order: the
+    /// aggregator's `adopt_update` keeps the first non-empty value, so folding
+    /// completion order would make the surviving text depend on network timing.
     async fn run_runners(
         runners: Vec<SemanticMergeChunkRunner>,
         concurrency: usize,
     ) -> Result<Vec<Vec<SemanticMergeDecision>>> {
-        let mut out = Vec::with_capacity(runners.len());
-        if runners.is_empty() {
-            return Ok(out);
+        let total = runners.len();
+        if total == 0 {
+            return Ok(Vec::new());
         }
         if concurrency <= 1 {
+            let mut out = Vec::with_capacity(total);
             for runner in runners {
                 out.push(runner.run().await?);
             }
             return Ok(out);
         }
         let mut it = runners.into_iter();
-        let mut joins: JoinSet<Result<Vec<SemanticMergeDecision>>> = JoinSet::new();
+        let mut joins: JoinSet<(usize, Result<Vec<SemanticMergeDecision>>)> = JoinSet::new();
         for _ in 0..concurrency {
             if let Some(runner) = it.next() {
-                joins.spawn(async move { runner.run().await });
+                let idx = runner.unit_idx;
+                joins.spawn(async move { (idx, runner.run().await) });
             }
         }
+        let mut completed = Vec::with_capacity(total);
         while let Some(joined) = joins.join_next().await {
-            let res = joined.map_err(|e| KgError::other(format!("semantic merge join: {e}")))?;
-            out.push(res?);
+            let (idx, res) =
+                joined.map_err(|e| KgError::other(format!("semantic merge join: {e}")))?;
+            completed.push((idx, res?));
             if let Some(runner) = it.next() {
-                joins.spawn(async move { runner.run().await });
+                let idx = runner.unit_idx;
+                joins.spawn(async move { (idx, runner.run().await) });
             }
         }
-        Ok(out)
+        order_by_unit_idx(completed, total)
     }
 }
 
@@ -1333,6 +1346,10 @@ impl FinalizeFindingMergeTool {
 }
 
 pub struct FindingMergeChunkRunner {
+    /// Position of this unit in submission order. The pool returns results in
+    /// COMPLETION order; the aggregator's `adopt_update` keeps the first
+    /// non-empty value, so results are re-sorted by this index before folding.
+    pub unit_idx: usize,
     pub llm: LLM,
     pub options: AgentRunOptions,
     pub system_prompt: String,
@@ -1572,6 +1589,7 @@ impl FindingMerger {
                 .collect(),
         );
         FindingMergeChunkRunner {
+            unit_idx: idx,
             llm: self.llm.clone(),
             options: self.agent_options.scoped(&debug_scope),
             system_prompt: crate::prompts::GENERAL_ROLE_SYSTEM.to_string(),
@@ -1612,36 +1630,42 @@ impl FindingMerger {
     }
 
     /// Bounded-concurrency pool for pre-built finding-merge runners. Mirror of
-    /// [`SemanticMerger::run_runners`].
+    /// [`SemanticMerger::run_runners`]: results come back in SUBMISSION order,
+    /// because the aggregator's `adopt_update` keeps the first non-empty value.
     async fn run_runners(
         runners: Vec<FindingMergeChunkRunner>,
         concurrency: usize,
     ) -> Result<Vec<Vec<FindingMergeDecision>>> {
-        let mut out = Vec::with_capacity(runners.len());
-        if runners.is_empty() {
-            return Ok(out);
+        let total = runners.len();
+        if total == 0 {
+            return Ok(Vec::new());
         }
         if concurrency <= 1 {
+            let mut out = Vec::with_capacity(total);
             for runner in runners {
                 out.push(runner.run().await?);
             }
             return Ok(out);
         }
         let mut it = runners.into_iter();
-        let mut joins: JoinSet<Result<Vec<FindingMergeDecision>>> = JoinSet::new();
+        let mut joins: JoinSet<(usize, Result<Vec<FindingMergeDecision>>)> = JoinSet::new();
         for _ in 0..concurrency {
             if let Some(runner) = it.next() {
-                joins.spawn(async move { runner.run().await });
+                let idx = runner.unit_idx;
+                joins.spawn(async move { (idx, runner.run().await) });
             }
         }
+        let mut completed = Vec::with_capacity(total);
         while let Some(joined) = joins.join_next().await {
-            let res = joined.map_err(|e| KgError::other(format!("finding merge join: {e}")))?;
-            out.push(res?);
+            let (idx, res) =
+                joined.map_err(|e| KgError::other(format!("finding merge join: {e}")))?;
+            completed.push((idx, res?));
             if let Some(runner) = it.next() {
-                joins.spawn(async move { runner.run().await });
+                let idx = runner.unit_idx;
+                joins.spawn(async move { (idx, runner.run().await) });
             }
         }
-        Ok(out)
+        order_by_unit_idx(completed, total)
     }
 }
 
@@ -1723,12 +1747,68 @@ impl FindingMerger {
     }
 }
 
+/// Reorder completed merge units into submission order.
+///
+/// The pool returns results in COMPLETION order, but the aggregator's
+/// `adopt_update` keeps the FIRST non-empty value it sees — so folding
+/// completion order makes the surviving text depend on network timing.
+/// Placing each unit at its own index makes the fold deterministic and
+/// reproduces the sequential (`concurrency <= 1`) result exactly.
+fn order_by_unit_idx<T>(completed: Vec<(usize, T)>, total: usize) -> Result<Vec<T>> {
+    let mut slots: Vec<Option<T>> = (0..total).map(|_| None).collect();
+    for (idx, value) in completed {
+        let slot = slots
+            .get_mut(idx)
+            .ok_or_else(|| KgError::other(format!("merge unit index {idx} out of range {total}")))?;
+        if slot.is_some() {
+            return Err(KgError::other(format!("duplicate merge unit index {idx}")));
+        }
+        *slot = Some(value);
+    }
+    slots
+        .into_iter()
+        .enumerate()
+        .map(|(idx, slot)| {
+            slot.ok_or_else(|| KgError::other(format!("merge unit {idx} produced no result")))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn batch_sizes(batches: &[Vec<i32>]) -> Vec<usize> {
         batches.iter().map(Vec::len).collect()
+    }
+
+    #[test]
+    fn merge_units_are_reordered_into_submission_order() {
+        // Unit 1 finished BEFORE unit 0. The fold must still see unit 0 first,
+        // or `adopt_update`'s "first non-empty wins" picks by network timing.
+        let completed = vec![(1usize, "second"), (0usize, "first")];
+        let ordered = order_by_unit_idx(completed, 2).expect("both units present");
+        assert_eq!(ordered, vec!["first", "second"]);
+    }
+
+    #[test]
+    fn merge_units_missing_a_result_is_an_error_not_a_silent_short_list() {
+        // A dropped unit must fail loudly: a short list would silently skip a
+        // chunk's decisions, which is the same corruption class as a shortfall.
+        let completed = vec![(0usize, "only")];
+        assert!(
+            order_by_unit_idx(completed, 2).is_err(),
+            "a missing unit must be an error, not a shorter vector"
+        );
+    }
+
+    #[test]
+    fn merge_units_duplicate_index_is_an_error() {
+        let completed = vec![(0usize, "a"), (0usize, "b")];
+        assert!(
+            order_by_unit_idx(completed, 2).is_err(),
+            "a duplicate unit index must be an error"
+        );
     }
 
     #[test]
