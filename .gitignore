@@ -22,3 +22,4 @@ moves
 test-results
 eval_*
 *.sqlite3*
+.adversary/

@@ -1,0 +1,42 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|mcp__plugin_universal-tools_universal-tools__safe_write|mcp__plugin_universal-tools_universal-tools__safe_replace|mcp__workspace__bash|mcp__desktop-commander(-[A-Za-z0-9_-]+)?__start_process|mcp__desktop-commander(-[A-Za-z0-9_-]+)?__write_file|mcp__desktop-commander(-[A-Za-z0-9_-]+)?__edit_block",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python311\\python.exe\" -I -c \"import base64;exec(base64.b64decode('aW1wb3J0IG9zLCBzeXMsIHJ1bnB5LCB0cmFjZWJhY2sKcCA9ICdDOlxcVXNlcnNcXFVzZXJcXHNvdXJjZVxccmVwb3NcXFRvb2xzXFxza2lsbC1nYXRlXFxza2lsbF9nYXRlLnB5JwppZiBub3Qgb3MucGF0aC5pc2ZpbGUocCk6CiAgICBzeXMuZXhpdCgwKQpzeXMucGF0aC5pbnNlcnQoMCwgb3MucGF0aC5kaXJuYW1lKHApKQpzeXMuYXJndiA9IFtwXSArIHN5cy5hcmd2WzE6XQp0cnk6CiAgICBydW5weS5ydW5fcGF0aChwLCBydW5fbmFtZT0nX19tYWluX18nKQpleGNlcHQgU3lzdGVtRXhpdDoKICAgIHJhaXNlCmV4Y2VwdCBCYXNlRXhjZXB0aW9uOgogICAgdHJhY2ViYWNrLnByaW50X2V4YygpCiAgICBzeXMuZXhpdCgwKQo=').decode('utf-8'))\" pre --level project",
+            "timeout": 15,
+            "statusMessage": "G38 skill gate (project)"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Skill|Edit|Write|MultiEdit|NotebookEdit|Bash|mcp__plugin_universal-tools_universal-tools__safe_write|mcp__plugin_universal-tools_universal-tools__safe_replace|mcp__workspace__bash|mcp__desktop-commander(-[A-Za-z0-9_-]+)?__start_process|mcp__desktop-commander(-[A-Za-z0-9_-]+)?__write_file|mcp__desktop-commander(-[A-Za-z0-9_-]+)?__edit_block",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python311\\python.exe\" -I -c \"import base64;exec(base64.b64decode('aW1wb3J0IG9zLCBzeXMsIHJ1bnB5LCB0cmFjZWJhY2sKcCA9ICdDOlxcVXNlcnNcXFVzZXJcXHNvdXJjZVxccmVwb3NcXFRvb2xzXFxza2lsbC1nYXRlXFxza2lsbF9nYXRlLnB5JwppZiBub3Qgb3MucGF0aC5pc2ZpbGUocCk6CiAgICBzeXMuZXhpdCgwKQpzeXMucGF0aC5pbnNlcnQoMCwgb3MucGF0aC5kaXJuYW1lKHApKQpzeXMuYXJndiA9IFtwXSArIHN5cy5hcmd2WzE6XQp0cnk6CiAgICBydW5weS5ydW5fcGF0aChwLCBydW5fbmFtZT0nX19tYWluX18nKQpleGNlcHQgU3lzdGVtRXhpdDoKICAgIHJhaXNlCmV4Y2VwdCBCYXNlRXhjZXB0aW9uOgogICAgdHJhY2ViYWNrLnByaW50X2V4YygpCiAgICBzeXMuZXhpdCgwKQo=').decode('utf-8'))\" post --level project",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python311\\python.exe\" -I -c \"import base64;exec(base64.b64decode('aW1wb3J0IG9zLCBzeXMsIHJ1bnB5LCB0cmFjZWJhY2sKcCA9ICdDOlxcVXNlcnNcXFVzZXJcXHNvdXJjZVxccmVwb3NcXFRvb2xzXFxza2lsbC1nYXRlXFxza2lsbF9nYXRlLnB5JwppZiBub3Qgb3MucGF0aC5pc2ZpbGUocCk6CiAgICBzeXMuZXhpdCgwKQpzeXMucGF0aC5pbnNlcnQoMCwgb3MucGF0aC5kaXJuYW1lKHApKQpzeXMuYXJndiA9IFtwXSArIHN5cy5hcmd2WzE6XQp0cnk6CiAgICBydW5weS5ydW5fcGF0aChwLCBydW5fbmFtZT0nX19tYWluX18nKQpleGNlcHQgU3lzdGVtRXhpdDoKICAgIHJhaXNlCmV4Y2VwdCBCYXNlRXhjZXB0aW9uOgogICAgdHJhY2ViYWNrLnByaW50X2V4YygpCiAgICBzeXMuZXhpdCgwKQo=').decode('utf-8'))\" stop --level project",
+            "timeout": 15,
+            "statusMessage": "G38 skill gate (project, turn end)"
+          }
+        ]
+      }
+    ]
+  }
+}

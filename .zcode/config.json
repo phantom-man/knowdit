@@ -1,0 +1,30 @@
+{
+ "hooks": {
+  "enabled": true,
+  "events": {
+   "PreToolUse": [],
+   "PostToolUse": [
+    {
+     "matcher": "Skill|mcp__(plugin_jcodemunch_jcodemunch|jcodemunch)__.*",
+     "hooks": [
+      {
+       "type": "process",
+       "command": "powershell.exe",
+       "enabled": true,
+       "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "tools/zcode_jcm_mark.ps1",
+        "-SessionId",
+        "${CLAUDE_SESSION_ID}"
+       ],
+       "timeoutMs": 15000
+      }
+     ]
+    }
+   ]
+  }
+ }
+}
