@@ -1,0 +1,118 @@
+{
+ "type": "CLEAR",
+ "commit": "b2db1c1cbbcc5710599f7aacf56ee876cf8cf796",
+ "caller": "zcode",
+ "ladder": "ladder=owner-picks sha=41e41e390a04",
+ "when": "20261113-150937",
+ "files": {
+  ".claude/settings.json": {
+   "sha": "932b6fb54c94477fe413d292ac4d5c75f121ecafebb72fd153d6b684c70f7bd7",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-150926",
+   "artifact": ".adversary\\reviews\\gate_20261113-150926.md"
+  },
+  ".githooks/.gitattributes": {
+   "sha": "d59c068482751b998e2701a727932753d63c849ad4220f3194548900c40dd7b7",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-150926",
+   "artifact": ".adversary\\reviews\\gate_20261113-150926.md"
+  },
+  ".githooks/adversary_audit.py": {
+   "sha": "f21413e622603f874d1f972d09ce435ef36273c63b179fb074797a38d54ddab2",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-150926",
+   "artifact": ".adversary\\reviews\\gate_20261113-150926.md"
+  },
+  ".githooks/adversary_baseline": {
+   "sha": "2703a87895f6a2cab55865f1d91f033cd1b859dd38032cae48c74b238df98a27",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-150926",
+   "artifact": ".adversary\\reviews\\gate_20261113-150926.md"
+  },
+  ".githooks/adversary_rules_epoch": {
+   "sha": "827a43888554a8065e577314bbc6c9f7791357bcdaa4d223a456274fcaf05813",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-150926",
+   "artifact": ".adversary\\reviews\\gate_20261113-150926.md"
+  },
+  ".githooks/adversary_text_rules_epoch": {
+   "sha": "13cc3772d1f081a7b2f661eedf7367216086694ebd000d7f6899ed59196a3eaa",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-150926",
+   "artifact": ".adversary\\reviews\\gate_20261113-150926.md"
+  },
+  ".githooks/post-commit": {
+   "sha": "377b1254489c2fe84091aa3cc269f4083baa3d44d3781e47c635e88249387268",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-150926",
+   "artifact": ".adversary\\reviews\\gate_20261113-150926.md"
+  },
+  ".githooks/pre-commit": {
+   "sha": "72864701ba348f1f0486994283215aa3dd35341edc15b4ce9276ced457cd32b9",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-150926",
+   "artifact": ".adversary\\reviews\\gate_20261113-150926.md"
+  },
+  ".githooks/pre-push": {
+   "sha": "8d44759bf78782df62fbdcb27189abfd1b5ea96d03ac7ccd0c8d3c3609d7b761",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-150926",
+   "artifact": ".adversary\\reviews\\gate_20261113-150926.md"
+  },
+  ".repo-memory.json": {
+   "sha": "250371c7813972284c9779c29d70d436dc5beef1659d29cceb0209563a20ce00",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-150926",
+   "artifact": ".adversary\\reviews\\gate_20261113-150926.md"
+  },
+  ".zcode/config.json": {
+   "sha": "d32095fb92b6355c354edd596116fc21f5f48f456d7ddf39e3bd1990a7eef5db",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-150926",
+   "artifact": ".adversary\\reviews\\gate_20261113-150926.md"
+  },
+  "recurrence_screen.json": {
+   "sha": "b6b08e27f93b6f397190dbf10fff78ba4353599fe3b37421a5bde23d5067cffd",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-150926",
+   "artifact": ".adversary\\reviews\\gate_20261113-150926.md"
+  },
+  "tools/zcode_jcm_mark.ps1": {
+   "sha": "0608f2bc00894f19e3ef9884b0511d0ea49d8d706a146f34f45b8616180f2b94",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-150926",
+   "artifact": ".adversary\\reviews\\gate_20261113-150926.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261113-150926.md": "model: @preset/gate-google-4-hydrogen | provider: anthropic-messages | usage: {'prompt_tokens': 0, 'completion_tokens': 2343, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=owner-picks sha=41e41e390a04 | files: ['.claude/settings.json', '.githooks/.gitattributes', '.githooks/adversary_audit.py', '.githooks/adversary_baseline', '.githooks/adversary_rules_epoch', '.githooks/adversary_text_rules_epoch', '.githooks/post-commit', '.githooks/pre-commit', '.githooks/pre-push', '.repo-memory.json', '.zcode/config.json', 'Agents.md', 'recurrence_screen.json', 'tools/zcode_jcm_mark.ps1'] | prompt: gate/adversary-review/hydrogen@1 (langfuse) | caller: zcode\r\n\r\nNo defects found in the staged arming and hook configuration files.\r\n\r\nVERDICT: CLEAR"
+ },
+ "adjudication": {
+  "denial": "reviews/gate_20261107-023229.md",
+  "outcomes": {
+   "fixed": 2
+  },
+  "detail": ".adversary/adjudications.json"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261113-150926.md": {
+   "embedded": "294761a0b6542d8b4d3af5f751838fb91bdc5407775d2854ab357f95f6eab247",
+   "disk": "294761a0b6542d8b4d3af5f751838fb91bdc5407775d2854ab357f95f6eab247"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "mac": "d007a49fdcdfd2769663b89b0031c574727f777bc10f9ad6ac450879cf60b44c"
+}
