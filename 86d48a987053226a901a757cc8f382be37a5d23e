@@ -1,0 +1,48 @@
+{
+ "type": "CLEAR",
+ "commit": "86d48a987053226a901a757cc8f382be37a5d23e",
+ "caller": "zcode",
+ "ladder": "ladder=owner-picks sha=41e41e390a04",
+ "when": "20261113-180957",
+ "files": {
+  "crates/knowdit-kg/src/agent_runner.rs": {
+   "sha": "bd517f66664158e8b5414c42231693a8486f14c4bda80cdca5aa83aedca41508",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-180952",
+   "artifact": ".adversary\\reviews\\gate_20261113-180952.md"
+  },
+  "crates/knowdit-kg/src/agents.rs": {
+   "sha": "c2a480493599cd6f494f3fd6bd5d508652b3c045d9fe3287080b5d9aed772d43",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-180952",
+   "artifact": ".adversary\\reviews\\gate_20261113-180952.md"
+  },
+  "crates/knowdit-kg/src/learn.rs": {
+   "sha": "ec478ab37d40841eb22f5210bb98d80b2a7def45463a95251f3ae945cfa67685",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-180952",
+   "artifact": ".adversary\\reviews\\gate_20261113-180952.md"
+  },
+  "crates/knowdit/src/cmd/learn/merge_args.rs": {
+   "sha": "3ece463d21166f56702fc05364fffd901e9606c415de3842960e02f815e1a19d",
+   "model": "@preset/gate-google-4-hydrogen",
+   "verdict": "CLEAR",
+   "when": "20261113-180952",
+   "artifact": ".adversary\\reviews\\gate_20261113-180952.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261113-180952.md": "model: @preset/gate-google-4-hydrogen | provider: anthropic-messages | usage: {'prompt_tokens': 0, 'completion_tokens': 3820, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=owner-picks sha=41e41e390a04 | files: ['crates/knowdit-kg/src/agent_runner.rs', 'crates/knowdit-kg/src/agents.rs', 'crates/knowdit-kg/src/learn.rs', 'crates/knowdit/src/cmd/learn/merge_args.rs'] | prompt: gate/adversary-review/hydrogen@1 (langfuse) | caller: zcode\r\n\r\nNo substantiated defects found in the staged changes across `crates/knowdit-kg/src/agent_runner.rs`, `crates/knowdit-kg/src/agents.rs`, `crates/knowdit-kg/src/learn.rs`, and `crates/knowdit/src/cmd/learn/merge_args.rs`.\r\n\r\n- `AgentRunOptions` and `AgentChunkRunner::run` bound `LLMYError::OutputLength` retries via `should_retry_step` and `output_length_retries`, keeping zero-budget fail-fast behavior and non-retryable errors intact.\r\n- `FindingMerger::render_new_block` restores the `### <title>` heading required by `prompts::merge_findings_user_message`, verified by `production_renderer_drives_the_prompt_count`.\r\n- `ProjectData::build_project_prompt_body` front-loads `## README` ahead of source files, and `ProjectData::categorize` caps the prompt budget via `categorize_token_budget` when configured.\r\n- `MergeCliArgs` wires `--categorize-token-budget` and `--output-length-retries` into `AgentRunOptions`.\r\n\r\nVERDICT: CLEAR"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261113-180952.md": {
+   "embedded": "2e852390af6f3c607b35ba837499bcd8a3b4e1478d80b2a75b37a8fd30c03ede",
+   "disk": "2e852390af6f3c607b35ba837499bcd8a3b4e1478d80b2a75b37a8fd30c03ede"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "mac": "ede64884f2104b33e015ba15a96ca99a8884aebbdb223dc400eff1066c17674e"
+}
