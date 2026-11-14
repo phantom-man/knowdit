@@ -52,6 +52,33 @@ pub struct MergeCliArgs {
     #[arg(long, default_value_t = knowdit_kg::learn::DEFAULT_CONTEXT_WINDOW_UTILIZATION)]
     pub context_window_utilization: f64,
 
+    /// Token budget for the CATEGORIZE prompt only.
+    ///
+    /// Categorize picks one label from a fixed enum, but it used to be handed
+    /// the whole context window: measured across the four r2 shards the
+    /// prompt bodies were median 111,579 chars (~27,894 tokens), mean 22,658,
+    /// max 32,370 — the single largest avoidable input cost in the pipeline.
+    /// A 13-way classification needs a bounded representative sample, not the
+    /// whole corpus. 0 = fall back to the context-window budget (old
+    /// behaviour).
+    #[arg(long, default_value_t = 8_000)]
+    pub categorize_token_budget: usize,
+
+    /// How many times a step that failed with `LLMYError::OutputLength`
+    /// is re-issued before the chunk is abandoned.
+    ///
+    /// MEASURED (2026-11-07, c4-1052 at --merge-concurrency 8): the last
+    /// finding-merge chunk returned `finish_reason: length` at 131,072
+    /// output tokens with ZERO tool calls. The real analysis ended at char
+    /// 49,287 of 419,384; the remaining 370,097 chars were a degenerate
+    /// "Produce./Ok./Write./Go." loop. That is a sampling artifact, not a
+    /// deterministic overflow, and `Agent::step` returns before mutating
+    /// the context - so re-issuing the identical request is safe. Before
+    /// this knob the error aborted the whole project and the run wrote
+    /// nothing. 0 = no retry (old behaviour).
+    #[arg(long, default_value_t = knowdit_kg::agent_runner::DEFAULT_OUTPUT_LENGTH_RETRIES)]
+    pub output_length_retries: usize,
+
     /// Upper bound (chars) on a canonical `updated_*` merge field. On merge the
     /// agent's proposed replacement stays a concise concrete representative;
     /// values above this are rejected at the tool boundary so the agent
@@ -119,6 +146,8 @@ impl MergeCliArgs {
     pub fn to_agent_options(&self) -> AgentRunOptions {
         AgentRunOptions::new(self.max_agent_steps)
             .with_context_window_utilization(self.context_window_utilization)
+            .with_categorize_token_budget(self.categorize_token_budget)
+            .with_output_length_retries(self.output_length_retries)
     }
 
     pub fn to_chunking_options(&self) -> MergeChunkingOptions {

@@ -411,6 +411,21 @@ impl ProjectData {
         let mut content = prompts::project_user_prefix();
         content.push_str("## Source Files\n\n");
 
+        // README FIRST (2026-11-13): the categorize cap bounds this body to
+        // N tokens, and the README is the most explicitly descriptive
+        // categorization signal. Appending it after every source file meant
+        // any project above the cap lost it entirely, so the label came from
+        // only the leading slice of the file list - and that label then
+        // propagates into every extraction prompt via
+        // `extract_semantics_user_suffix(categories)`. Front-loading it keeps
+        // the best signal inside any budget and is strictly better even at
+        // the full window.
+        if let Some(readme) = self.load_readme() {
+            content.push_str("## README\n\n");
+            content.push_str(&readme);
+            content.push_str("\n\n");
+        }
+
         let lang = self.source_language().code_fence().to_string();
 
         for file in self.source_files() {
@@ -432,12 +447,6 @@ impl ProjectData {
                 lang,
                 filtered
             ));
-        }
-
-        if let Some(readme) = self.load_readme() {
-            content.push_str("## README\n\n");
-            content.push_str(&readme);
-            content.push_str("\n\n");
         }
 
         content
@@ -489,8 +498,15 @@ impl ProjectData {
             .config
             .count_tokens_lossy(prompts::GENERAL_ROLE_SYSTEM);
         let suffix_tokens = model.config.count_tokens_lossy(user_suffix);
-        let budget = get_context_budget(model, agent_options.context_window_utilization)
+        let window_budget = get_context_budget(model, agent_options.context_window_utilization)
             .saturating_sub(sys_tokens + suffix_tokens);
+        // Categorize picks ONE label from a fixed enum, so the whole context
+        // window is waste: measured median 27,894 tokens across the r2 shards.
+        // A bounded sample is enough. `None` keeps the old window budget.
+        let budget = match agent_options.categorize_token_budget {
+            Some(cap) => window_budget.min(cap),
+            None => window_budget,
+        };
         let content = self.build_project_prompt_body();
         tracing::info!(
             "categorize preparing {}: source_files={}, body_chars={}, budget={}",
@@ -1331,5 +1347,63 @@ mod merge_coverage_tests {
         let (_results, missing) =
             ProjectData::finding_merge_results_with_coverage(&extracted, aggregated);
         assert!(missing.is_empty(), "case-only difference is not a shortfall");
+    }
+}
+
+
+#[cfg(test)]
+mod readme_order_tests {
+    use super::*;
+
+    /// REGRESSION (2026-11-13): the categorize cap bounds the prompt body
+    /// to N tokens. The README used to be appended AFTER every source
+    /// file, so any project above the cap lost it entirely - and the
+    /// README is the most explicitly descriptive categorization signal.
+    /// The label then came from only the leading slice of the file list,
+    /// and that label propagates into every extraction prompt via
+    /// `extract_semantics_user_suffix(categories)`.
+    ///
+    /// The README must therefore appear BEFORE the first source file.
+    #[tokio::test]
+    async fn readme_precedes_source_files_in_the_prompt_body() {
+        let dir = std::env::temp_dir().join(format!(
+            "knowdit-readme-order-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("contracts")).expect("mkdir");
+        std::fs::write(
+            dir.join("README.md"),
+            "# Vault protocol\n\nA lending market with oracle-priced collateral.\n",
+        )
+        .expect("write readme");
+        std::fs::write(
+            dir.join("contracts").join("Vault.sol"),
+            "pragma solidity ^0.8.0;\ncontract Vault { uint256 s_total; }\n",
+        )
+        .expect("write source");
+
+        let project = ProjectData::from_dir("readme-order", &dir, None)
+            .await
+            .expect("load project");
+        let body = project.build_project_prompt_body();
+
+        let readme_at = body.find("## README").expect(
+            "the README must be present in the body; a missing README means \
+             the fixture did not load and this test would pass vacuously"
+        );
+        let first_source_at = body.find("### contracts").expect(
+            "the source file must be present in the body"
+        );
+        assert!(
+            readme_at < first_source_at,
+            "the README must precede the source files so a bounded \
+             categorize budget keeps the best signal; got README at {} and \
+             first source at {}",
+            readme_at,
+            first_source_at
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

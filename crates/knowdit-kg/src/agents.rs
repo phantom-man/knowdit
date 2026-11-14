@@ -1675,8 +1675,15 @@ impl FindingMerger {
     fn render_new_block(new_findings: &[ExtractedFinding]) -> String {
         let mut buf = String::new();
         for finding in new_findings {
+            // The `### <title>` heading is LOAD-BEARING, not decoration:
+            // `prompts::merge_findings_user_message` derives its
+            // "exactly N new findings" clause by counting `### ` lines in
+            // this block. Without the heading the count is 0 and the prompt
+            // tells the model to emit zero decisions, which silently turns
+            // every undecided finding into a duplicate canonical.
             buf.push_str(&format!(
-                "Severity: {}\nCategory: {}\nSubcategory: {}\nTitle: {}\nRoot Cause: {}\nDescription: {}\nPatterns: {}\nExploits: {}\n\n",
+                "### {}\nSeverity: {}\nCategory: {}\nSubcategory: {}\nTitle: {}\nRoot Cause: {}\nDescription: {}\nPatterns: {}\nExploits: {}\n\n",
+                finding.title,
                 finding.severity,
                 finding.category,
                 finding.subcategory,
@@ -1776,6 +1783,8 @@ fn order_by_unit_idx<T>(completed: Vec<(usize, T)>, total: usize) -> Result<Vec<
 
 #[cfg(test)]
 mod tests {
+    use knowdit_kg_model::db::audit_finding::FindingSeverity;
+    use knowdit_kg_model::db::finding_category::VulnerabilityCategory;
     use super::*;
 
     fn batch_sizes(batches: &[Vec<i32>]) -> Vec<usize> {
@@ -1955,4 +1964,40 @@ mod tests {
             MergeChunkingOptions::pack_new_item_batches(vec![0i32, 1, 2], 1_000_000, 0, |_| 1);
         assert_eq!(batch_sizes(&batches), vec![1, 1, 1]);
     }
+
+    /// REGRESSION (2026-11-13): the count clause counts `### ` lines in the
+    /// new-findings block, but `render_new_block` emitted none - so the
+    /// prompt said "exactly 0 new findings ... call exactly 0 times" and
+    /// every undecided finding silently became a duplicate canonical.
+    ///
+    /// The pre-existing prompt tests could not catch this: they hand-write
+    /// `### <id>` blocks instead of using the production renderer. This test
+    /// runs the REAL renderer through the REAL prompt builder.
+    #[test]
+    fn production_renderer_drives_the_prompt_count() {
+        let findings: Vec<ExtractedFinding> = (0..3)
+            .map(|i| ExtractedFinding {
+                title: format!("[L-0{i}] distinct bug {i}"),
+                severity: FindingSeverity::Low,
+                category: VulnerabilityCategory::AccessControl,
+                subcategory: "Caller Not Checked".to_string(),
+                root_cause: "rc".to_string(),
+                description: "d".to_string(),
+                patterns: "p".to_string(),
+                exploits: "e".to_string(),
+            })
+            .collect();
+        let block = FindingMerger::render_new_block(&findings);
+        let prompt = crate::prompts::merge_findings_user_message("ID: 7\nTitle: x\n", &block);
+        assert!(
+            prompt.contains("exactly 3"),
+            "the production renderer must drive the count clause to 3; \
+             a 0 here means the model is told to emit no decisions. Got:\n{prompt}"
+        );
+        assert!(
+            !prompt.contains("exactly 0"),
+            "the prompt must never instruct zero decisions for a non-empty block"
+        );
+    }
+
 }

@@ -40,6 +40,11 @@ use tokio::sync::Mutex;
 
 use crate::error::{KgError, Result};
 
+/// Bootstrap default for [`AgentRunOptions::output_length_retries`].
+/// The learn pipeline overrides it from the CLI; this constant exists
+/// only so callers that do not thread a knob still get the fix.
+pub const DEFAULT_OUTPUT_LENGTH_RETRIES: usize = 2;
+
 /// Tunables shared by every agent-style chunk run.
 ///
 /// Surfaced 1:1 from CLI by the caller; this struct does NOT read any
@@ -67,6 +72,19 @@ pub struct AgentRunOptions {
     /// [`crate::learn::DEFAULT_CONTEXT_WINDOW_UTILIZATION`]; CLI callers
     /// override via [`AgentRunOptions::with_context_window_utilization`].
     pub context_window_utilization: f64,
+    /// Token budget for the CATEGORIZE prompt only. Categorize picks one
+    /// label from a fixed enum, so handing it the whole context window is
+    /// pure waste (measured median 27,894 tokens across the r2 shards).
+    /// `None` = fall back to the context-window budget (old behaviour).
+    pub categorize_token_budget: Option<usize>,
+    /// How many times a step that failed with `LLMYError::OutputLength`
+    /// is re-issued before the chunk is abandoned. A `finish_reason:
+    /// length` with no tool calls is a degenerate sampling loop (measured:
+    /// 370,097 of 419,384 chars were "Produce./Ok./Write./Go."), not a
+    /// deterministic overflow - `Agent::step` returns before mutating the
+    /// context, so a retry re-issues the identical request. `0` disables
+    /// the retry (old behaviour: fail the whole project).
+    pub output_length_retries: usize,
 }
 
 impl Default for AgentRunOptions {
@@ -86,6 +104,8 @@ impl AgentRunOptions {
             debug_prefix: None,
             llm_settings: None,
             context_window_utilization: crate::learn::DEFAULT_CONTEXT_WINDOW_UTILIZATION,
+            categorize_token_budget: None,
+            output_length_retries: DEFAULT_OUTPUT_LENGTH_RETRIES,
         }
     }
 
@@ -98,6 +118,19 @@ impl AgentRunOptions {
     /// sane band happens downstream in [`crate::learn::get_context_budget`].
     pub fn with_context_window_utilization(mut self, utilization: f64) -> Self {
         self.context_window_utilization = utilization;
+        self
+    }
+
+    /// Cap the CATEGORIZE prompt budget (CLI-supplied). `0` means "no cap" and
+    /// falls back to the context-window budget, preserving old behaviour.
+    pub fn with_categorize_token_budget(mut self, budget: usize) -> Self {
+        self.categorize_token_budget = if budget == 0 { None } else { Some(budget) };
+        self
+    }
+
+    /// Override the `OutputLength` retry budget (CLI-supplied).
+    pub fn with_output_length_retries(mut self, retries: usize) -> Self {
+        self.output_length_retries = retries;
         self
     }
 
@@ -119,6 +152,8 @@ impl AgentRunOptions {
             debug_prefix: Some(prefix),
             llm_settings: self.llm_settings.clone(),
             context_window_utilization: self.context_window_utilization,
+            categorize_token_budget: self.categorize_token_budget,
+            output_length_retries: self.output_length_retries,
         }
     }
 }
@@ -270,6 +305,17 @@ pub struct AgentChunkRunner<T> {
     pub label: String,
 }
 
+/// Should a failed step be re-issued?
+///
+/// Only `OutputLength` is retryable: it is a degenerate sampling loop
+/// that leaves the agent context untouched, so the identical request
+/// can be re-sent. Every other error (billing, filtered, transport,
+/// tool-call) is either deterministic or already retried inside
+/// `llmy`, so re-issuing it here would only double the cost.
+fn should_retry_step(err: &llmy::LLMYError, attempt: usize, budget: usize) -> bool {
+    attempt < budget && matches!(err, llmy::LLMYError::OutputLength)
+}
+
 impl<T> AgentChunkRunner<T> {
     pub async fn run(self) -> Result<AgentRunOutcome> {
         let AgentChunkRunner {
@@ -294,15 +340,49 @@ impl<T> AgentChunkRunner<T> {
             AgentConfig::default().sequential_toolcall(),
         );
 
-        let initial = agent
-            .step_with_user(
-                user_prompt,
-                &llm,
-                options.debug_prefix.as_deref(),
-                options.llm_settings.clone(),
-            )
-            .await
-            .map_err(|err| KgError::other(format!("{label} agent initial step failed: {err}")))?;
+        // A `finish_reason: length` with no tool calls is a degenerate
+        // sampling loop (measured: 370,097 of 419,384 chars were
+        // "Produce./Ok./Write./Go."). `Agent::step` returns the error
+        // BEFORE mutating the context, so re-issuing the identical request
+        // is safe and idempotent. Retry a bounded number of times, then
+        // fail closed naming the cause.
+        let mut initial_attempt = 0usize;
+        let initial = loop {
+            match agent
+                .step_with_user(
+                    user_prompt.clone(),
+                    &llm,
+                    options.debug_prefix.as_deref(),
+                    options.llm_settings.clone(),
+                )
+                .await
+            {
+                Ok(step) => break step,
+                Err(err)
+                    if should_retry_step(
+                        &err,
+                        initial_attempt,
+                        options.output_length_retries,
+                    ) =>
+                {
+                    initial_attempt += 1;
+                    tracing::warn!(
+                        "{} agent initial step hit the output-length limit; \
+                         retry {}/{} (degenerate sampling loop, context unchanged)",
+                        label,
+                        initial_attempt,
+                        options.output_length_retries,
+                    );
+                }
+                Err(err) => {
+                    return Err(KgError::other(format!(
+                        "{label} agent initial step failed after \
+                         {initial_attempt} output-length retr{}: {err}",
+                        if initial_attempt == 1 { "y" } else { "ies" },
+                    )));
+                }
+            }
+        };
 
         let mut step = initial;
         let mut steps: usize = 1;
@@ -320,16 +400,43 @@ impl<T> AgentChunkRunner<T> {
                 ));
                 break;
             }
-            step = agent
-                .step(
-                    &llm,
-                    options.debug_prefix.as_deref(),
-                    options.llm_settings.clone(),
-                )
-                .await
-                .map_err(|err| {
-                    KgError::other(format!("{label} agent step #{steps} failed: {err}"))
-                })?;
+            let mut step_attempt = 0usize;
+            step = loop {
+                match agent
+                    .step(
+                        &llm,
+                        options.debug_prefix.as_deref(),
+                        options.llm_settings.clone(),
+                    )
+                    .await
+                {
+                    Ok(step) => break step,
+                    Err(err)
+                        if should_retry_step(
+                            &err,
+                            step_attempt,
+                            options.output_length_retries,
+                        ) =>
+                    {
+                        step_attempt += 1;
+                        tracing::warn!(
+                            "{} agent step #{} hit the output-length limit; \
+                             retry {}/{} (degenerate sampling loop, context unchanged)",
+                            label,
+                            steps,
+                            step_attempt,
+                            options.output_length_retries,
+                        );
+                    }
+                    Err(err) => {
+                        return Err(KgError::other(format!(
+                            "{label} agent step #{steps} failed after \
+                             {step_attempt} output-length retr{}: {err}",
+                            if step_attempt == 1 { "y" } else { "ies" },
+                        )));
+                    }
+                }
+            };
             steps += 1;
         }
 
@@ -347,5 +454,44 @@ impl<T> AgentChunkRunner<T> {
             early_stop_reason: early_stop,
             finalize_summary: summary,
         })
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// REGRESSION (2026-11-13): a degenerate `finish_reason: length`
+    /// aborted the whole project. Measured on c4-1052 chunk0139: 131,072
+    /// output tokens, zero tool calls, 370,097 of 419,384 chars a
+    /// "Produce./Ok./Write./Go." loop. It must be retried, not fatal.
+    #[test]
+    fn output_length_is_retried_within_budget() {
+        let err = llmy::LLMYError::OutputLength;
+        assert!(should_retry_step(&err, 0, 2), "first failure must retry");
+        assert!(should_retry_step(&err, 1, 2), "second failure must retry");
+        assert!(
+            !should_retry_step(&err, 2, 2),
+            "the budget must be finite - an unbounded retry would loop forever"
+        );
+    }
+
+    /// A zero budget preserves the old fail-fast behaviour, so the knob can
+    /// be turned off without a code change.
+    #[test]
+    fn zero_budget_disables_the_retry() {
+        assert!(!should_retry_step(&llmy::LLMYError::OutputLength, 0, 0));
+    }
+
+    /// Only `OutputLength` is retryable. A billing cap is deterministic and
+    /// a filtered response is a verdict on the prompt - re-issuing either
+    /// would double the cost for the same outcome.
+    #[test]
+    fn non_output_length_errors_are_not_retried() {
+        let filtered = llmy::LLMYError::Filtered("refused".to_string());
+        assert!(!should_retry_step(&filtered, 0, 5));
+        let empty = llmy::LLMYError::EmptyChoice;
+        assert!(!should_retry_step(&empty, 0, 5));
     }
 }
