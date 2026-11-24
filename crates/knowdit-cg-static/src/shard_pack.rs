@@ -249,6 +249,50 @@ pub fn materialize_shards(cg: &CallGraph, budget: usize, out_dir: &std::path::Pa
     Ok(manifest)
 }
 
+/// Structural graph context to accompany source in the extraction prompt (graph-guided,
+/// never replaces source). Reports cycle signatures, hub functions (in-degree), and
+/// internal/external call edges so the model reasons about structure AND code.
+/// If `ids` is Some, restrict to that shard's functions; else whole graph.
+pub fn graph_features(cg: &CallGraph, ids: Option<&[i32]>) -> String {
+    let scope: BTreeSet<i32> = match ids {
+        Some(v) => v.iter().copied().collect(),
+        None => cg.contracts.values().flat_map(|c| c.functions.iter().map(|f| f.id)).collect(),
+    };
+    let mut indeg: BTreeMap<i32, usize> = BTreeMap::new();
+    let mut internal = 0usize;
+    let mut external = 0usize;
+    let name = |id: i32| -> String {
+        cg.contracts.values().find_map(|c| c.functions.iter().find(|f| f.id == id).map(|f| f.name.clone())).unwrap_or_default()
+    };
+    for c in cg.contracts.values() {
+        for f in &c.functions {
+            if !scope.contains(&f.id) { continue; }
+            for call in &f.calls {
+                if scope.contains(&call.to_id) {
+                    internal += 1;
+                    *indeg.entry(call.to_id).or_insert(0) += 1;
+                } else {
+                    external += 1;
+                }
+            }
+        }
+    }
+    let mut hubs: Vec<(i32, usize)> = indeg.into_iter().collect();
+    hubs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    let mut out = String::from("## Graph context (structure alongside the source)\n");
+    out.push_str(&format!("- functions: {} | internal call edges: {} | external calls: {}\n", scope.len(), internal, external));
+    if !hubs.is_empty() {
+        let top: Vec<String> = hubs.iter().take(5).map(|(id, d)| format!("{} (in-degree {})", name(*id), d)).collect();
+        out.push_str(&format!("- hub functions: {}\n", top.join(", ")));
+    }
+    if ids.is_none() {
+        for g in cycle_groups(cg) {
+            out.push_str(&format!("- cycle: {}\n", cycle_signature(cg, &g)));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,6 +351,17 @@ mod tests {
             let has = |i: i32| s.function_ids.contains(&i);
             assert!(!(has(1) ^ has(2)) && !(has(2) ^ has(3)), "cycle split across shards");
         }
+    }
+
+    #[test]
+    fn graph_features_reports_edges_and_hubs() {
+        let cg = graph();
+        let s = graph_features(&cg, None);
+        assert!(s.contains("internal call edges: 3"));
+        assert!(s.contains("hub functions:"));
+        assert!(s.contains("cycle:"));
+        let scoped = graph_features(&cg, Some(&[1, 2]));
+        assert!(scoped.contains("functions: 2"));
     }
 
     #[test]

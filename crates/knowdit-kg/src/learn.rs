@@ -637,7 +637,11 @@ impl ProjectData {
                     }
                 }
             }
-            let user_prompt = format!("{}{}", content, user_suffix);
+            let mut user_prompt = format!("{}{}", content, user_suffix);
+            if let Some(cg) = call_graph {
+                let ids: Vec<i32> = entry["function_ids"].as_array().map(|a| a.iter().filter_map(|v| v.as_i64().map(|x| x as i32)).collect()).unwrap_or_default();
+                user_prompt.push_str(&shard_pack::graph_features(cg, Some(&ids)));
+            }
             let extractor = SemanticChunkExtractor {
                 llm: llm.clone(),
                 options: agent_options.scoped(&format!("shard-{}", idx)),
@@ -789,6 +793,7 @@ impl ProjectData {
                         user_prompt.push_str(&format!("- {}\n", shard_pack::cycle_signature(cg, g)));
                     }
                 }
+                user_prompt.push_str(&shard_pack::graph_features(cg, None));
             }
             tracing::info!(
                 "Extracting semantics from chunk {} (~{} tokens, done={})",
