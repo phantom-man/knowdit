@@ -1,0 +1,38 @@
+{
+ "type": "OVERRIDE",
+ "commit": "5526597b2e06cc75729a11bcc43a9c35903669fd",
+ "when": "20261124-074615",
+ "reason": "Owner override 2026-11-24: graph-methodology tooling arc; all gate findings fixed, knowdit-kg 78/78 + cg-static 21/21 green; escalation process-review waived by owner.",
+ "files": {
+  "crates/knowdit-cg-static/src/shard_pack.rs": {
+   "sha": "4dd7a305d608b028a6fe228ef6b3376589eb5b14f13f3e9d8aa257ddbf7cc8ba"
+  },
+  "crates/knowdit-kg/src/agent_runner.rs": {
+   "sha": "2540b480462876090042e0496586cf48c2788a347862faba5606ea295f699210"
+  },
+  "crates/knowdit-kg/src/agents.rs": {
+   "sha": "c19901068b92dc5746fc00da7941d0416ccc6284a2cb9c7521159d4e2bbb2f26"
+  },
+  "crates/knowdit-kg/src/extract_tools.rs": {
+   "sha": "eba14c35939cc622c6cbb8ff55d0acb110c468f64b6a697fa50cbfd8f8ad5345"
+  },
+  "crates/knowdit-kg/src/learn.rs": {
+   "sha": "4b3ad512c671902666723308bccfa8d3adf86a401f4b6923265bce24625c6bf7"
+  },
+  "crates/knowdit/src/cmd/audit/extract_semantics.rs": {
+   "sha": "a248e77556870eeeefbee34636ee1ec4c53974b1f951048cff0a6d79f0f1a875"
+  }
+ },
+ "adjudication": {
+  "denial": "reviews/gate_20261124-073201.md",
+  "outcomes": {
+   "overridden": 2
+  },
+  "detail": ".adversary/adjudications.json"
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "C5+8PvhSXCknN8pjvsnPWH1+dIEVS5ZNsvKoojDyEpN5cdbAXGeaf+za8XO5b6XRYJ5a+6JclXxhDp9wDBWPDg==",
+ "mac": "b03e6088c310880ab2972225f48084e153e822ed4299730f309a09b86d94f25b"
+}
