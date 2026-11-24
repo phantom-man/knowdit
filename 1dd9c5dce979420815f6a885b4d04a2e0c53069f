@@ -1,0 +1,37 @@
+{
+ "type": "CLEAR",
+ "commit": "1dd9c5dce979420815f6a885b4d04a2e0c53069f",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261124-035345",
+ "files": {
+  "crates/knowdit-cg-static/src/lib.rs": {
+   "sha": "1ba670932836dd0f3086dae178ed364a0e63feb56da55d1ed88038e4e7e67048",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-035242",
+   "artifact": ".adversary\\reviews\\gate_20261124-035242.md"
+  },
+  "crates/knowdit-cg-static/src/shard_pack.rs": {
+   "sha": "a83794e125438fee48c144031c21a5ba7bdfb547a31f646a897c7696c3d685eb",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-035242",
+   "artifact": ".adversary\\reviews\\gate_20261124-035242.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261124-035242.md": "model: @preset/gate-gemini-25-flash | provider: anthropic-messages | usage: {'prompt_tokens': 0, 'completion_tokens': 2855, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['crates/knowdit-cg-static/src/lib.rs', 'crates/knowdit-cg-static/src/shard_pack.rs'] | prompt: gate/adversary-review/gemini-25-flash@1 (langfuse) | caller: unknown\r\n\r\nThe change introduces a new module `shard_pack` which implements call-graph-guided shard packing, including strongly-connected component (SCC) detection, cycle group identification, and a mechanism to pack functions into budget-sized shards while keeping cycle groups intact. It also provides an anchoring gate for validation.\r\n\r\nThe implementation of Tarjan's SCC algorithm in `scc` appears correct, handling indices, low-link values, and stack operations as expected. The logic for identifying cycle groups (`cycle_groups`) and forming shard groups (combining cycles and singletons in `shard_groups`) is sound. The `pack_shards` function correctly ensures that cycle groups are never split across shards, even if they exceed the budget, and prioritizes filling shards up to the token budget. The `tokens_est` function uses a reasonable heuristic for token estimation. The `cycle_signature` function generates a descriptive string for cycles, and the `anchored` function provides a correct validation mechanism.\r\n\r\nThe use of `BTreeMap` and `BTreeSet` throughout the code contributes to deterministic output where sorting is applied, which is a good practice for reproducible results in graph algorithms. The tests provided cover the core functionality and demonstrate correct behavior for cycle co-location, budget adherence, and anchoring.\r\n\r\nNo defects were found that introduce or enable incorrect behavior.\r\n\r\nVERDICT: CLEAR"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261124-035242.md": {
+   "embedded": "015445ef500a71ae903b8da86e96fc8b9867af44916fca301aaf8f4d909a4faa",
+   "disk": "015445ef500a71ae903b8da86e96fc8b9867af44916fca301aaf8f4d909a4faa"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "BEwoU0hK/kuHlDTjDiAMQrq8QF8LhAqccEwB6HWm3v5CmS8Gowa0DfClwD3hQoYwI7FPzqJK1gjkS6U/0NWhCw==",
+ "mac": "848badfb9190515ec695f2a325be24d9a1b04824bd1471fff6dc6971d12b24d2"
+}
