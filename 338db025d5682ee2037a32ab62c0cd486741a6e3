@@ -1,0 +1,37 @@
+{
+ "type": "CLEAR",
+ "commit": "338db025d5682ee2037a32ab62c0cd486741a6e3",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261124-071126",
+ "files": {
+  "crates/knowdit-cg-static/src/shard_pack.rs": {
+   "sha": "b57e90bd228e788870e2c8624190044ea9599419229c4b18cd6b157ccbe0a73b",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261124-071022",
+   "artifact": ".adversary\\reviews\\gate_20261124-071022.md"
+  },
+  "crates/knowdit-kg/src/learn.rs": {
+   "sha": "030d8b6ff790d0959b2f111b66351bd088e3e01b9f4d22f81caa06a2de2321af",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261124-071022",
+   "artifact": ".adversary\\reviews\\gate_20261124-071022.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261124-071022.md": "model: @preset/gate-haiku-55 | provider: anthropic-messages | usage: {'prompt_tokens': 12762, 'completion_tokens': 1550, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['crates/knowdit-cg-static/src/shard_pack.rs', 'crates/knowdit-kg/src/learn.rs'] | prompt: gate/adversary-review/haiku-55@2 (langfuse) | caller: unknown\r\n\r\nNo defects found in this change. I checked the new `graph_features` function, its test, and both call sites in `learn.rs`:\r\n\r\n- The `Some(&ids)` and `Some(&[1, 2])` arguments coerce to `Option<&[i32]>`, so they compile.\r\n- The test assertions match the fixture: A\u2192B\u2192C\u2192A gives 3 internal edges, the scoped `[1, 2]` call reports `functions: 2`, and `cycle:` is emitted for the whole-graph call.\r\n- The added prompt text is appended after the existing cycle anchors. The chunk path's token log is computed after the append, so it counts the new text.\r\n\r\nVERDICT: CLEAR"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261124-071022.md": {
+   "embedded": "4a19e878d5d4f658a4ccf26efa4c710ecbf60e40cfe862beffd0886a0e54a162",
+   "disk": "4a19e878d5d4f658a4ccf26efa4c710ecbf60e40cfe862beffd0886a0e54a162"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "1+6/nKeR3BsIj5orHRZDr91lOKmt0pwWIfmKJRHJLD91cLThNlJGyEcHMJWc5GqYWcHoFCM+Wq9LdbisOyUtCw==",
+ "mac": "addcdb04bd086a9a8650bfc38f2a335dc3ec43a35ec61ae04a07f385ea6506f0"
+}
