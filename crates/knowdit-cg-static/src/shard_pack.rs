@@ -212,6 +212,43 @@ pub fn functions_anchored(cg: &CallGraph, funcs: &[(String, String)]) -> bool {
     })
 }
 
+/// Render a shard's source as sequential `### path` + fenced-solidity sections (deterministic).
+pub fn render_shard(cg: &CallGraph, shard: &Shard) -> String {
+    let ids: BTreeSet<i32> = shard.function_ids.iter().copied().collect();
+    let mut out = String::from("## Source Files\n\n");
+    for c in cg.contracts.values() {
+        let funcs: Vec<&knowdit_repo_model::cg::Function> = c.functions.iter().filter(|f| ids.contains(&f.id)).collect();
+        if funcs.is_empty() { continue; }
+        out.push_str(&format!("### {}\n", c.relative_file_path.to_string_lossy()));
+        out.push_str("```solidity\n");
+        for f in funcs {
+            if let Some(content) = &f.content { out.push_str(content); out.push('\n'); }
+        }
+        out.push_str("```\n\n");
+    }
+    out
+}
+
+/// Materialize shards as SEQUENTIAL files (shard-0000.sol ...) + manifest.json BEFORE
+/// extraction, so agents can resume by stable shard index+content-hash. Returns the
+/// manifest entries (index, file, function_ids, signature, tokens_est).
+pub fn materialize_shards(cg: &CallGraph, budget: usize, out_dir: &std::path::Path) -> std::io::Result<Vec<serde_json::Value>> {
+    std::fs::create_dir_all(out_dir)?;
+    let shards = pack_shards(cg, budget);
+    let mut manifest = Vec::new();
+    for (i, s) in shards.iter().enumerate() {
+        let fname = format!("shard-{:04}.sol", i);
+        let body = render_shard(cg, s);
+        std::fs::write(out_dir.join(&fname), &body)?;
+        manifest.push(serde_json::json!({
+            "index": i, "file": fname, "function_ids": s.function_ids,
+            "signature": s.signature, "tokens_est": s.tokens_est,
+        }));
+    }
+    std::fs::write(out_dir.join("manifest.json"), serde_json::to_string_pretty(&manifest).unwrap())?;
+    Ok(manifest)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,6 +307,33 @@ mod tests {
             let has = |i: i32| s.function_ids.contains(&i);
             assert!(!(has(1) ^ has(2)) && !(has(2) ^ has(3)), "cycle split across shards");
         }
+    }
+
+    #[test]
+    fn function_appears_in_exactly_one_shard() {
+        let cg = graph();
+        let shards = pack_shards(&cg, 5); // tiny budget forces multiple shards
+        let mut seen = std::collections::BTreeMap::new();
+        for s in &shards {
+            for id in &s.function_ids {
+                *seen.entry(*id).or_insert(0) += 1;
+            }
+        }
+        assert!(seen.values().all(|c| *c == 1), "a function was split across shards");
+        assert_eq!(seen.len(), 4);
+    }
+
+    #[test]
+    fn materialize_writes_sequential_files_and_manifest() {
+        let cg = graph();
+        let dir = std::env::temp_dir().join(format!("knowdit_shard_test_{}", std::process::id()));
+        let man = materialize_shards(&cg, 1000, &dir).unwrap();
+        assert!(!man.is_empty());
+        assert!(dir.join("manifest.json").exists());
+        assert!(dir.join("shard-0000.sol").exists());
+        let body = std::fs::read_to_string(dir.join("shard-0000.sol")).unwrap();
+        assert!(body.contains("### "));
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

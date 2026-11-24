@@ -213,6 +213,10 @@ pub struct SolidityRepackShardsArgs {
     /// Optional JSON dump of the repacked shard plan.
     #[arg(long, short = 'o')]
     pub output: Option<PathBuf>,
+    /// Materialize shards as sequential files + manifest.json into this directory
+    /// (required for hash-based checkpoint/resume during extraction).
+    #[arg(long = "out-dir")]
+    pub out_dir: Option<PathBuf>,
 }
 impl SolidityRepackShardsArgs {
     pub async fn run(self) -> Result<()> {
@@ -232,6 +236,10 @@ impl SolidityRepackShardsArgs {
             );
         }
         println!("{} shard(s) from {} contract(s)", shards.len(), cg.contracts.len());
+        if let Some(dir) = &self.out_dir {
+            let man = knowdit_cg_static::shard_pack::materialize_shards(&cg, self.budget, dir)?;
+            println!("materialized {} shard file(s) + manifest.json to {}", man.len(), dir.display());
+        }
         if let Some(out) = self.output {
             let plan: Vec<serde_json::Value> = shards
                 .iter()

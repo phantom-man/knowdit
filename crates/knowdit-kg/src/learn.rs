@@ -579,6 +579,61 @@ impl ProjectData {
         self.extract_semantics_inner(llm, categories, agent_options, chunk_input_budget, sink, Some(call_graph)).await
     }
 
+    /// Extract over MATERIALIZED shard files (sequential + manifest.json), resuming by
+    /// stable shard index + content hash. Shards must be produced first via
+    /// `knowdit static solidity repack-shards --out-dir <dir>` (whole functions, cycles
+    /// never split). Pass the same `CallGraph` used to pack the shards to enable the
+    /// emit_semantic anchoring/hyperbolic gates; agents continue where they left off.
+    pub async fn extract_semantics_from_shards(
+        &self,
+        shard_dir: &std::path::Path,
+        llm: &LLM,
+        categories: &[DeFiCategory],
+        agent_options: &AgentRunOptions,
+        sink: Option<&crate::checkpoint::CheckpointSink>,
+        call_graph: Option<&CallGraph>,
+    ) -> Result<Vec<ExtractedSemantic>> {
+        let manifest: Vec<serde_json::Value> =
+            serde_json::from_str(&std::fs::read_to_string(shard_dir.join("manifest.json"))?)?;
+        let system_prompt = prompts::GENERAL_ROLE_SYSTEM;
+        let user_suffix = prompts::extract_semantics_user_suffix(categories);
+        let checkpointed: std::collections::HashMap<u32, (String, Vec<u8>)> = match sink {
+            Some(s) => s.load_stage(crate::checkpoint::stage::SEMANTIC_EXTRACT).unwrap_or_default(),
+            None => std::collections::HashMap::new(),
+        };
+        let mut all = Vec::new();
+        for entry in manifest {
+            let idx = entry["index"].as_u64().unwrap_or(0) as u32;
+            let file = entry["file"].as_str().unwrap_or("");
+            let content = std::fs::read_to_string(shard_dir.join(file))?;
+            let hash = crate::checkpoint::chunk_hash(&content);
+            if let Some((stored_hash, payload)) = checkpointed.get(&idx) {
+                if *stored_hash == hash {
+                    if let Ok(stored) = serde_json::from_slice::<Vec<ExtractedSemantic>>(payload) {
+                        tracing::info!("Shard {} resumed from checkpoint ({} semantic(s))", idx, stored.len());
+                        all.extend(stored);
+                        continue;
+                    }
+                }
+            }
+            let user_prompt = format!("{}{}", content, user_suffix);
+            let extractor = SemanticChunkExtractor {
+                llm: llm.clone(),
+                options: agent_options.scoped(&format!("shard-{}", idx)),
+                system_prompt: system_prompt.to_string(),
+                user_prompt,
+                label: format!("semantic-shard-{}", idx),
+                call_graph: call_graph.map(|c| std::sync::Arc::new(c.clone())),
+            };
+            let sems = extractor.run().await?;
+            if let Some(s) = sink {
+                s.write_chunk(crate::checkpoint::stage::SEMANTIC_EXTRACT, idx, &hash, &serde_json::to_vec(&sems)?)?;
+            }
+            all.extend(sems);
+        }
+        Ok(all)
+    }
+
     /// Reorder the project body's `### path` source sections so contracts belonging to the
     /// same call-graph shard group (cycle) are contiguous, keeping cycles inside one shard.
     fn graph_ordered_body(&self, cg: &CallGraph) -> String {
