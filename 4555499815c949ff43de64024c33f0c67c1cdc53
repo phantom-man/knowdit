@@ -1,0 +1,22 @@
+{
+ "type": "OVERRIDE",
+ "commit": "4555499815c949ff43de64024c33f0c67c1cdc53",
+ "when": "20261124-084054",
+ "reason": "Owner override 2026-11-24: extract-shards CLI + graph-aware shard extraction; A/B verified (9B 7/7 anchored vs deepseek-old 6/7); tests 78/78; escalation waived by owner.",
+ "files": {
+  "crates/knowdit-kg/src/learn.rs": {
+   "sha": "542a2f4efed02f1434c7b4c9f1bf98a3db571d0098fa8999b5f06b5bddb5a94d"
+  },
+  "crates/knowdit/src/cmd/solidity.rs": {
+   "sha": "6776ae5e7cb81b08c84e0a4736aa68b6ad6aebdf7fcd9124a4c1b6ec9f547b2b"
+  },
+  "crates/knowdit/src/lib.rs": {
+   "sha": "6065ee0500b154dcc891a1f5f51c5c7d80787e11ffb73cb820c77ae3a464c6c2"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "SAGkM05DlVacxLZtatNNVqmd+PEXQe5ARumf5mqEBQhMg0dg4pcX/i6V75IIlHzvugZquX171MIMURl6UAfXDA==",
+ "mac": "525661ffe835c64bf300b9fabc220d155c7f2f20617616810cb890acda849bac"
+}
