@@ -309,6 +309,27 @@ impl ProjectData {
         })
     }
 
+    /// Graph-aware variant: cycle-coherent shards + cycle-signature anchors + emit gates.
+    /// Uses the stored static call graph so mechanisms are not split across shards.
+    pub async fn categorize_and_extract_semantics_with_graph(
+        &self,
+        llm: &LLM,
+        agent_options: &AgentRunOptions,
+        chunk_input_budget: Option<usize>,
+        sink: Option<&crate::checkpoint::CheckpointSink>,
+        call_graph: &CallGraph,
+    ) -> Result<ExtractResult> {
+        if self.source_files().is_empty() {
+            return Ok(ExtractResult { categories: vec![], semantics: vec![], findings: vec![], in_project_links: InProjectLinks::default() });
+        }
+        let categories = self.categorize(llm, agent_options).await?;
+        let all_semantics = self
+            .extract_semantics_with_graph(llm, &categories, agent_options, chunk_input_budget, sink, call_graph)
+            .await?;
+        let deduped = Self::dedup_semantics(all_semantics);
+        Ok(ExtractResult { categories, semantics: deduped, findings: Vec::new(), in_project_links: InProjectLinks::default() })
+    }
+
     /// Phase 2: Merge extracted semantics with existing KB and write to DB.
     /// MUST be run serially (one project at a time) to avoid merge conflicts.
     /// Commit one project's full merge output to the historical KG.
@@ -827,6 +848,34 @@ impl ProjectData {
     /// semantic_idx)` edges. Validates that every finding got at least one
     /// link (the LLM is instructed to enforce this; we re-check and bail
     /// on violations rather than silently produce an unlinked finding).
+    /// FGW structural+feature coupling (docs/SEMANTIC_EXTRACTION_REVIEW_AND_MATH.md §3.3).
+    /// Proposes additional mechanism<->finding edges: feature = text distance, structure =
+    /// semantic function names mentioned in the finding prose. Augments (never removes) LLM links.
+    fn fgw_structural_edges(semantics: &[ExtractedSemantic], findings: &[ExtractedFinding]) -> Vec<(usize, usize)> {
+        let mut idmap: std::collections::BTreeMap<String, i32> = std::collections::BTreeMap::new();
+        let mut next = 0i32;
+        for s in semantics {
+            for fn_ in &s.functions {
+                let k = format!("{}::{}", fn_.contract, fn_.name);
+                if !idmap.contains_key(&k) { idmap.insert(k, next); next += 1; }
+            }
+        }
+        let sem: Vec<(String, Vec<i32>)> = semantics.iter().map(|s| {
+            let ids = s.functions.iter().filter_map(|fn_| idmap.get(&format!("{}::{}", fn_.contract, fn_.name)).copied()).collect();
+            (format!("{} {}", s.name, s.definition), ids)
+        }).collect();
+        let find: Vec<(String, Vec<i32>)> = findings.iter().map(|fd| {
+            let text = format!("{} {} {} {}", fd.title, fd.root_cause, fd.patterns, fd.description).to_lowercase();
+            let ids = idmap.iter().filter(|(k, _)| {
+                let fname = k.rsplit("::").next().unwrap_or("").to_lowercase();
+                fname.len() > 3 && text.contains(&fname)
+            }).map(|(_, v)| *v).collect();
+            (format!("{} {}", fd.title, fd.root_cause), ids)
+        }).collect();
+        knowdit_cg_static::fgw::link_semantics_findings(&sem, &find, 0.5)
+            .into_iter().enumerate().map(|(s_idx, f_idx)| (f_idx, s_idx)).collect()
+    }
+
     async fn link_findings_in_project(
         &self,
         llm: &LLM,
@@ -894,6 +943,11 @@ impl ProjectData {
             )));
         }
 
+        for (f_idx, s_idx) in Self::fgw_structural_edges(semantics, findings) {
+            if seen.insert((f_idx, s_idx)) {
+                edges.push((f_idx, s_idx));
+            }
+        }
         Ok(InProjectLinks { edges })
     }
 

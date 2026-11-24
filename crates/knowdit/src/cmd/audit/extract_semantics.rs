@@ -127,9 +127,28 @@ pub(crate) async fn load_or_extract_project_semantics(
         project.display_id()
     );
     let legacy = knowdit_kg::project_loader::ProjectData::from_project_view(project);
-    let extract = legacy
-        .categorize_and_extract_semantics(llm, agent_options, extract_chunk_input_budget, None)
-        .await?;
+    // Prefer the graph-aware methodology when a static call graph is stored
+    // (cycle-coherent shards + anchors + emit gates); fall back to legacy otherwise.
+    let extract = match repo.load_call_graph().await {
+        Ok(cg) if !cg.contracts.is_empty() => {
+            tracing::info!("Using graph-aware extraction ({} contracts) for {}", cg.contracts.len(), project.display_id());
+            legacy
+                .categorize_and_extract_semantics_with_graph(llm, agent_options, extract_chunk_input_budget, None, &cg)
+                .await?
+        }
+        Ok(_) => {
+            tracing::info!("No stored call graph for {}; using legacy extraction", project.display_id());
+            legacy
+                .categorize_and_extract_semantics(llm, agent_options, extract_chunk_input_budget, None)
+                .await?
+        }
+        Err(e) => {
+            tracing::warn!("Call-graph load failed for {} ({e}); falling back to legacy extraction", project.display_id());
+            legacy
+                .categorize_and_extract_semantics(llm, agent_options, extract_chunk_input_budget, None)
+                .await?
+        }
+    };
     repo.replace_project_semantics(&extract.semantics).await?;
     tracing::info!(
         "Wrote {} project semantics for {} to project database",
