@@ -704,7 +704,16 @@ impl ProjectData {
                 }
             }
 
-            let user_prompt = format!("{}{}", chunk, user_suffix);
+            let mut user_prompt = format!("{}{}", chunk, user_suffix);
+            if let Some(cg) = call_graph {
+                let cycles = shard_pack::cycle_groups(cg);
+                if !cycles.is_empty() {
+                    user_prompt.push_str("\n## Call-graph cycle anchors (keep each cycle's mechanism in one semantic)\n");
+                    for g in &cycles {
+                        user_prompt.push_str(&format!("- {}\n", shard_pack::cycle_signature(cg, g)));
+                    }
+                }
+            }
             tracing::info!(
                 "Extracting semantics from chunk {} (~{} tokens, done={})",
                 chunk_idx,

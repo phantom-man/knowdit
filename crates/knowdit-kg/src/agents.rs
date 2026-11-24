@@ -29,6 +29,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use knowdit_repo_model::cg::CallGraph;
 use knowdit_cg_static::shard_pack;
+use knowdit_cg_static::hyperbolic;
 
 use llmy::agent::tool::ToolBox;
 use llmy::agent::{LLMYError, tool};
@@ -207,6 +208,9 @@ impl EmitSemanticTool {
             let anchors: Vec<(String, String)> = args.functions.iter().map(|fn_| (fn_.name.clone(), fn_.contract.clone())).collect();
             if !shard_pack::functions_anchored(cg, &anchors) {
                 return Ok("error: semantic anchors are not co-located in one call-graph shard".to_string());
+            }
+            if !hyperbolic::hyperbolic_anchored(cg, &anchors) {
+                return Ok("error: semantic anchors fail the hyperbolic geodesic/radial hierarchy gate".to_string());
             }
         }
         Ok(self.buffer.push_with_message(args, "semantic").await)
