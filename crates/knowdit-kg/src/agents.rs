@@ -227,10 +227,23 @@ impl EmitSemanticTool {
 )]
 struct FinalizeSemanticExtractTool {
     buffer: Arc<AgentChunkBuffer<ExtractedSemantic>>,
+    storage_deps: Arc<std::collections::BTreeMap<String, Vec<String>>>,
+    chunk_source: String,
 }
 
 impl FinalizeSemanticExtractTool {
     async fn invoke(&self, args: FinalizeArgs) -> std::result::Result<String, LLMYError> {
+        // Pre-commit coverage gate BEFORE finalizing so the remedy is actionable.
+        let emitted = self.buffer.snapshot().await;
+        let referenced: std::collections::BTreeSet<String> =
+            emitted.iter().flat_map(|s| s.functions.iter().map(|f| f.name.clone())).collect();
+        let tokens: std::collections::BTreeSet<String> = self.chunk_source.split(|c: char| !c.is_alphanumeric() && c != '_').filter(|t| !t.is_empty()).map(|t| t.to_string()).collect();
+        let coupled: std::collections::BTreeSet<String> =
+            self.storage_deps.values().flatten().filter(|n| tokens.contains(*n)).cloned().collect();
+        let missed: Vec<&String> = coupled.iter().filter(|n| !referenced.contains(*n)).collect();
+        if !missed.is_empty() {
+            return Ok(format!("error: coverage gap: {} state-coupled function(s) uncovered: {:?}. Emit semantics covering them, then call finalize again.", missed.len(), missed));
+        }
         Ok(self
             .buffer
             .finalize_with_message(args.summary, "semantic extraction")
@@ -246,7 +259,7 @@ pub struct SemanticChunkExtractor {
     pub label: String,
     pub call_graph: Option<Arc<CallGraph>>,
     pub storage_deps: Arc<std::collections::BTreeMap<String, Vec<String>>>,
-    pub existing_nodes: Arc<Vec<(String, String)>>,
+    pub existing_nodes: Arc<std::sync::Mutex<Vec<(String, String)>>>,
 }
 
 impl SemanticChunkExtractor {
@@ -260,6 +273,8 @@ impl SemanticChunkExtractor {
         });
         tools.add_tool(FinalizeSemanticExtractTool {
             buffer: buffer.clone(),
+            storage_deps: self.storage_deps.clone(),
+            chunk_source: self.user_prompt.clone(),
         });
         if let Some(cg) = &self.call_graph {
             tools.add_tool(InspectSymbolTool { cg: cg.clone() });

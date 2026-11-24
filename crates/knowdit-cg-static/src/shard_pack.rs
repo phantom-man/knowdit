@@ -11,6 +11,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use knowdit_repo_model::cg::CallGraph;
+use knowdit_repo_model::storage::StorageGraph;
 
 /// Function-level adjacency (caller -> callees) and id->name, over contract functions.
 fn adjacency(cg: &CallGraph) -> (BTreeMap<i32, Vec<i32>>, BTreeMap<i32, String>) {
@@ -289,6 +290,21 @@ pub fn graph_features(cg: &CallGraph, ids: Option<&[i32]>) -> String {
         for g in cycle_groups(cg) {
             out.push_str(&format!("- cycle: {}\n", cycle_signature(cg, &g)));
         }
+    }
+    out
+}
+
+/// Build state-variable -> [function names] read/write map from the static call + storage
+/// graphs, for the get_storage_dependencies agent tool (group coupled functions).
+pub fn storage_dependencies(cg: &CallGraph, storage: &StorageGraph) -> BTreeMap<String, Vec<String>> {
+    let fname: BTreeMap<i32, String> = cg.contracts.values()
+        .flat_map(|c| c.functions.iter().map(|f| (f.id, f.name.clone()))).collect();
+    let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for fsv in &storage.function_state_variables {
+        let Some(var) = storage.state_variables.get(&fsv.state_variable_id) else { continue };
+        let Some(fn_) = fname.get(&fsv.function_id) else { continue };
+        let e = out.entry(var.name.clone()).or_default();
+        if !e.contains(fn_) { e.push(fn_.clone()); }
     }
     out
 }

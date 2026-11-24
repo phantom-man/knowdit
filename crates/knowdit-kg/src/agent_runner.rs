@@ -281,6 +281,10 @@ impl<T> AgentChunkBuffer<T> {
     pub async fn drain(&self) -> Vec<T> {
         std::mem::take(&mut *self.items.lock().await)
     }
+    /// Read-only clone of current items (coverage gates) without draining.
+    pub async fn snapshot(&self) -> Vec<T> where T: Clone {
+        self.items.lock().await.clone()
+    }
 
     /// Return the finalize summary the agent reported (if the agent
     /// actually called the finalize tool). Cloned so the buffer can stay

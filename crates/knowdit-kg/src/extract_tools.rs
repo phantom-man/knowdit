@@ -178,10 +178,11 @@ pub struct LookupKgArgs { pub contract: String }
 #[derive(Debug, Clone)]
 #[tool(arguments = LookupKgArgs, invoke = invoke, name = "lookup_existing_kg_nodes",
     description = "Query already-emitted semantic nodes for a contract (adjacent shards) to reuse canonical mechanisms instead of creating duplicates.")]
-pub struct LookupKgTool { pub existing: Arc<Vec<(String, String)>> }
+pub struct LookupKgTool { pub existing: Arc<std::sync::Mutex<Vec<(String, String)>>> }
 impl LookupKgTool {
     async fn invoke(&self, args: LookupKgArgs) -> std::result::Result<String, LLMYError> {
-        let hits: Vec<&(String, String)> = self.existing.iter().filter(|(c, _)| c == &args.contract || c.ends_with(&args.contract)).collect();
+        let guard = self.existing.lock().unwrap();
+        let hits: Vec<&(String, String)> = guard.iter().filter(|(c, _)| c == &args.contract || c.ends_with(&args.contract)).collect();
         Ok(serde_json::json!({ "contract": args.contract, "existing": hits }).to_string())
     }
 }

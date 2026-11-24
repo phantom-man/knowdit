@@ -30,6 +30,13 @@ use std::time::Instant;
 // in-project linking phase still uses the JSON-mode prompt+parse pattern,
 // because it's a single LLM call producing a small, simply-shaped index map.
 
+/// Real backings for the proactive agent tools (storage deps + existing KG nodes).
+#[derive(Clone, Default)]
+pub struct ExtractBackings {
+    pub storage_deps: std::collections::BTreeMap<String, Vec<String>>,
+    pub existing_nodes: Vec<(String, String)>,
+}
+
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct InProjectLinkEntry {
@@ -318,13 +325,14 @@ impl ProjectData {
         chunk_input_budget: Option<usize>,
         sink: Option<&crate::checkpoint::CheckpointSink>,
         call_graph: &CallGraph,
+        backings: Option<&ExtractBackings>,
     ) -> Result<ExtractResult> {
         if self.source_files().is_empty() {
             return Ok(ExtractResult { categories: vec![], semantics: vec![], findings: vec![], in_project_links: InProjectLinks::default() });
         }
         let categories = self.categorize(llm, agent_options).await?;
         let all_semantics = self
-            .extract_semantics_with_graph(llm, &categories, agent_options, chunk_input_budget, sink, call_graph)
+            .extract_semantics_with_graph(llm, &categories, agent_options, chunk_input_budget, sink, call_graph, backings)
             .await?;
         let deduped = Self::dedup_semantics(all_semantics);
         Ok(ExtractResult { categories, semantics: deduped, findings: Vec::new(), in_project_links: InProjectLinks::default() })
@@ -583,7 +591,7 @@ impl ProjectData {
         chunk_input_budget: Option<usize>,
         sink: Option<&crate::checkpoint::CheckpointSink>,
     ) -> Result<Vec<ExtractedSemantic>> {
-        self.extract_semantics_inner(llm, categories, agent_options, chunk_input_budget, sink, None).await
+        self.extract_semantics_inner(llm, categories, agent_options, chunk_input_budget, sink, None, None).await
     }
 
     /// Graph-aware variant: co-locates call-graph cycles in one shard (H1 proxy) and
@@ -596,8 +604,9 @@ impl ProjectData {
         chunk_input_budget: Option<usize>,
         sink: Option<&crate::checkpoint::CheckpointSink>,
         call_graph: &CallGraph,
+        backings: Option<&ExtractBackings>,
     ) -> Result<Vec<ExtractedSemantic>> {
-        self.extract_semantics_inner(llm, categories, agent_options, chunk_input_budget, sink, Some(call_graph)).await
+        self.extract_semantics_inner(llm, categories, agent_options, chunk_input_budget, sink, Some(call_graph), backings).await
     }
 
     /// Extract over MATERIALIZED shard files (sequential + manifest.json), resuming by
@@ -613,6 +622,7 @@ impl ProjectData {
         agent_options: &AgentRunOptions,
         sink: Option<&crate::checkpoint::CheckpointSink>,
         call_graph: Option<&CallGraph>,
+        backings: Option<&ExtractBackings>,
     ) -> Result<Vec<ExtractedSemantic>> {
         let manifest: Vec<serde_json::Value> =
             serde_json::from_str(&std::fs::read_to_string(shard_dir.join("manifest.json"))?)?;
@@ -622,6 +632,7 @@ impl ProjectData {
             Some(s) => s.load_stage(crate::checkpoint::stage::SEMANTIC_EXTRACT).unwrap_or_default(),
             None => std::collections::HashMap::new(),
         };
+        let shared_existing = std::sync::Arc::new(std::sync::Mutex::new(backings.map(|b| b.existing_nodes.clone()).unwrap_or_default()));
         let mut all = Vec::new();
         for entry in manifest {
             let idx = entry["index"].as_u64().unwrap_or(0) as u32;
@@ -632,6 +643,7 @@ impl ProjectData {
                 if *stored_hash == hash {
                     if let Ok(stored) = serde_json::from_slice::<Vec<ExtractedSemantic>>(payload) {
                         tracing::info!("Shard {} resumed from checkpoint ({} semantic(s))", idx, stored.len());
+                        { let mut g = shared_existing.lock().unwrap(); for s in &stored { for fn_ in &s.functions { g.push((fn_.contract.clone(), s.name.clone())); } } }
                         all.extend(stored);
                         continue;
                     }
@@ -649,10 +661,15 @@ impl ProjectData {
                 user_prompt,
                 label: format!("semantic-shard-{}", idx),
                 call_graph: call_graph.map(|c| std::sync::Arc::new(c.clone())), 
-                storage_deps: std::sync::Arc::new(std::collections::BTreeMap::new()),
-                existing_nodes: std::sync::Arc::new(Vec::new()),
+                storage_deps: std::sync::Arc::new(backings.map(|b| b.storage_deps.clone()).unwrap_or_default()),
+                existing_nodes: shared_existing.clone(),
             };
             let sems = extractor.run().await?;
+            {
+                let mut g = shared_existing.lock().unwrap();
+                for s in &sems { for fn_ in &s.functions { g.push((fn_.contract.clone(), s.name.clone())); } }
+            }
+
             if let Some(s) = sink {
                 s.write_chunk(crate::checkpoint::stage::SEMANTIC_EXTRACT, idx, &hash, &serde_json::to_vec(&sems)?)?;
             }
@@ -700,6 +717,7 @@ impl ProjectData {
         chunk_input_budget: Option<usize>,
         sink: Option<&crate::checkpoint::CheckpointSink>,
         call_graph: Option<&CallGraph>,
+        backings: Option<&ExtractBackings>,
     ) -> Result<Vec<ExtractedSemantic>> {
         let system_prompt = prompts::GENERAL_ROLE_SYSTEM;
         let model = &llm.model;
@@ -813,8 +831,8 @@ impl ProjectData {
                 user_prompt,
                 label: chunk_label,
                 call_graph: call_graph.map(|c| std::sync::Arc::new(c.clone())), 
-                storage_deps: std::sync::Arc::new(std::collections::BTreeMap::new()),
-                existing_nodes: std::sync::Arc::new(Vec::new()),
+                storage_deps: std::sync::Arc::new(backings.map(|b| b.storage_deps.clone()).unwrap_or_default()),
+                existing_nodes: std::sync::Arc::new(std::sync::Mutex::new(backings.map(|b| b.existing_nodes.clone()).unwrap_or_default())),
             };
             let chunk_semantics = extractor.run().await?;
             tracing::info!(
