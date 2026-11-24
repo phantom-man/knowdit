@@ -1,0 +1,58 @@
+{
+ "type": "CLEAR",
+ "commit": "774d9f9b61d65377f6541b8d5cc2cb20b5ca68f8",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261124-042817",
+ "files": {
+  "crates/knowdit-cg-static/src/fgw.rs": {
+   "sha": "c2514fe3287d2757670da79259fe64d2d03abc5ccf3bb85b5545caf876f77836",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-042813",
+   "artifact": ".adversary\\reviews\\gate_20261124-042813.md"
+  },
+  "crates/knowdit-cg-static/src/hyperbolic.rs": {
+   "sha": "39af1501d4ec1a965e0f2ca0c7fd700a167dfd39265ca0e2c2d26fbde149982d",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-042813",
+   "artifact": ".adversary\\reviews\\gate_20261124-042813.md"
+  },
+  "crates/knowdit-cg-static/src/lib.rs": {
+   "sha": "9fccdff1e6a6e0eabdad5ec4036cb1d0a7f5df7361244534d6c4a6ebf28b15ae",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-042813",
+   "artifact": ".adversary\\reviews\\gate_20261124-042813.md"
+  },
+  "crates/knowdit-kg/src/agents.rs": {
+   "sha": "527ad17bad75d6487a1918ec6bba0521b7c914f6a3bda1e560e25aa4cb5daf3b",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-042813",
+   "artifact": ".adversary\\reviews\\gate_20261124-042813.md"
+  },
+  "crates/knowdit-kg/src/learn.rs": {
+   "sha": "75e5611883ea43b87b3a14da8d6602eea13fbc1f643d9cc70a8fa409f893afad",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-042813",
+   "artifact": ".adversary\\reviews\\gate_20261124-042813.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261124-042813.md": "model: @preset/gate-gemini-25-flash | provider: anthropic-messages | usage: {'prompt_tokens': 0, 'completion_tokens': 4492, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['crates/knowdit-cg-static/src/fgw.rs', 'crates/knowdit-cg-static/src/hyperbolic.rs', 'crates/knowdit-cg-static/src/lib.rs', 'crates/knowdit-kg/src/agents.rs', 'crates/knowdit-kg/src/learn.rs'] | prompt: gate/adversary-review/gemini-25-flash@1 (langfuse) | caller: unknown\r\n\r\nVERDICT: CLEAR"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261124-042813.md": {
+   "embedded": "7ad99f344306762c4fc1f9f8388c4e4558be6ac040eaa7a8f3efdade7036450c",
+   "disk": "7ad99f344306762c4fc1f9f8388c4e4558be6ac040eaa7a8f3efdade7036450c"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "LHWxEIK2Z4WplASLgFheRu7xs95pTXx0vQ2qaJh3jgMxgHkMpyxO1GRBhOzksfQ/URZu0t1ZgJwsGcytqIdADw==",
+ "mac": "cb0a8d28daab961bf2e9e5e87f5f1c5d4afff8e12ef2fc6ff76dd399ef5e4f3c"
+}
