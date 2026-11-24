@@ -172,6 +172,9 @@ pub struct AgentRunOutcome {
     /// Free-form summary string the agent passed to the finalize tool, if
     /// the tool was actually called.
     pub finalize_summary: Option<String>,
+    /// Number of items in the buffer at loop exit. Lets callers distinguish a
+    /// complete extraction from a partial (early-stop) one without re-draining.
+    pub collected: usize,
 }
 
 /// Generic per-chunk accumulator. Tool implementations push items in via
@@ -453,6 +456,7 @@ impl<T> AgentChunkRunner<T> {
             steps,
             early_stop_reason: early_stop,
             finalize_summary: summary,
+            collected: buffer.len().await,
         })
     }
 }
