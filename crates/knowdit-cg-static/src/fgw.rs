@@ -87,6 +87,29 @@ pub fn link_semantics_findings(
     best_links(&fgw_coupling(&feat, &stru, alpha, 0.05, 100))
 }
 
+/// Neural variant: feature term = 1 - cosine(embedded names) via the embedding backend
+/// (falls back to hashed vectors offline); structure term unchanged. Upgrades mechanism<->finding
+/// coupling from lexical to learned semantic similarity.
+pub fn link_semantics_findings_neural(
+    sem: &[(String, Vec<i32>)],
+    find: &[(String, Vec<i32>)],
+    alpha: f64,
+) -> Vec<usize> {
+    let sn: Vec<String> = sem.iter().map(|(n, _)| n.clone()).collect();
+    let fn_: Vec<String> = find.iter().map(|(n, _)| n.clone()).collect();
+    let se = crate::embed::embed_texts(&sn);
+    let fe = crate::embed::embed_texts(&fn_);
+    let feat: Vec<Vec<f64>> = se.iter().map(|s| fe.iter().map(|f| 1.0 - crate::embed::cosine(s, f)).collect()).collect();
+    let sjac = |a: &Vec<i32>, b: &Vec<i32>| -> f64 {
+        let sa: std::collections::BTreeSet<i32> = a.iter().copied().collect();
+        let sb: std::collections::BTreeSet<i32> = b.iter().copied().collect();
+        let u = sa.union(&sb).count();
+        if u == 0 { 1.0 } else { 1.0 - (sa.intersection(&sb).count() as f64 / u as f64) }
+    };
+    let stru: Vec<Vec<f64>> = sem.iter().map(|(_, a)| find.iter().map(|(_, b)| sjac(a, b)).collect()).collect();
+    best_links(&fgw_coupling(&feat, &stru, alpha, 0.05, 100))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

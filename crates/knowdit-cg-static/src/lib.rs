@@ -1,4 +1,5 @@
 pub mod cg;
+pub mod embed;
 pub mod fgw;
 pub mod hyperbolic;
 pub mod shard_pack;
