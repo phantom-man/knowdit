@@ -30,6 +30,7 @@ use std::sync::Arc;
 use knowdit_repo_model::cg::CallGraph;
 use knowdit_cg_static::shard_pack;
 use knowdit_cg_static::hyperbolic;
+use crate::extract_tools::{InspectSymbolTool, TraceCallGraphTool, CheckH1LoopsTool, ValidateSemanticTool, StorageDepTool, LookupKgTool};
 
 use llmy::agent::tool::ToolBox;
 use llmy::agent::{LLMYError, tool};
@@ -244,6 +245,8 @@ pub struct SemanticChunkExtractor {
     pub user_prompt: String,
     pub label: String,
     pub call_graph: Option<Arc<CallGraph>>,
+    pub storage_deps: Arc<std::collections::BTreeMap<String, Vec<String>>>,
+    pub existing_nodes: Arc<Vec<(String, String)>>,
 }
 
 impl SemanticChunkExtractor {
@@ -258,6 +261,14 @@ impl SemanticChunkExtractor {
         tools.add_tool(FinalizeSemanticExtractTool {
             buffer: buffer.clone(),
         });
+        if let Some(cg) = &self.call_graph {
+            tools.add_tool(InspectSymbolTool { cg: cg.clone() });
+            tools.add_tool(TraceCallGraphTool { cg: cg.clone() });
+            tools.add_tool(CheckH1LoopsTool { cg: cg.clone() });
+            tools.add_tool(ValidateSemanticTool { cg: cg.clone() });
+        }
+        tools.add_tool(StorageDepTool { deps: self.storage_deps.clone() });
+        tools.add_tool(LookupKgTool { existing: self.existing_nodes.clone() });
 
         let runner = AgentChunkRunner {
             llm: self.llm,

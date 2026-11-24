@@ -648,7 +648,9 @@ impl ProjectData {
                 system_prompt: system_prompt.to_string(),
                 user_prompt,
                 label: format!("semantic-shard-{}", idx),
-                call_graph: call_graph.map(|c| std::sync::Arc::new(c.clone())),
+                call_graph: call_graph.map(|c| std::sync::Arc::new(c.clone())), 
+                storage_deps: std::sync::Arc::new(std::collections::BTreeMap::new()),
+                existing_nodes: std::sync::Arc::new(Vec::new()),
             };
             let sems = extractor.run().await?;
             if let Some(s) = sink {
@@ -810,7 +812,9 @@ impl ProjectData {
                 system_prompt: system_prompt.to_string(),
                 user_prompt,
                 label: chunk_label,
-                call_graph: call_graph.map(|c| std::sync::Arc::new(c.clone())),
+                call_graph: call_graph.map(|c| std::sync::Arc::new(c.clone())), 
+                storage_deps: std::sync::Arc::new(std::collections::BTreeMap::new()),
+                existing_nodes: std::sync::Arc::new(Vec::new()),
             };
             let chunk_semantics = extractor.run().await?;
             tracing::info!(

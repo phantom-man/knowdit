@@ -6,6 +6,7 @@ pub mod checkpoint;
 pub mod source_filter;
 pub mod db;
 pub mod error;
+pub mod extract_tools;
 pub mod knowledge_graph;
 pub mod learn;
 pub mod link;
