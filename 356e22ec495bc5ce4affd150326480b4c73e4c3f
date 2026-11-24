@@ -1,0 +1,58 @@
+{
+ "type": "CLEAR",
+ "commit": "356e22ec495bc5ce4affd150326480b4c73e4c3f",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261124-054843",
+ "files": {
+  "crates/knowdit-cg-static/src/embed.rs": {
+   "sha": "a5621221a45d75cc9b4fcfd99d3c83763b76822a2f1c85b23b5f6e7c30a9179d",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-054840",
+   "artifact": ".adversary\\reviews\\gate_20261124-054840.md"
+  },
+  "crates/knowdit-cg-static/src/fgw.rs": {
+   "sha": "cbc7957a5f83b57aa181d2c5e913886611da9b6aa218625640bb7df0230506c3",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-054840",
+   "artifact": ".adversary\\reviews\\gate_20261124-054840.md"
+  },
+  "crates/knowdit-cg-static/src/lib.rs": {
+   "sha": "8579e1d7ab9a0233f22ca9da201e4275019e541dff058934dd6bab1503c84be2",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-054840",
+   "artifact": ".adversary\\reviews\\gate_20261124-054840.md"
+  },
+  "tools/embed_server.py": {
+   "sha": "0928caf2ba662c59da05c8f7ec631a3be49bdbf2549f021006dfb73052412654",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-054840",
+   "artifact": ".adversary\\reviews\\gate_20261124-054840.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261124-054840.md": "model: @preset/gate-gemini-25-flash | provider: anthropic-messages | usage: {'prompt_tokens': 0, 'completion_tokens': 2374, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['crates/knowdit-cg-static/src/embed.rs', 'crates/knowdit-cg-static/src/fgw.rs', 'crates/knowdit-cg-static/src/lib.rs', 'tools/embed_server.py'] | prompt: gate/adversary-review/gemini-25-flash@1 (langfuse) | caller: unknown\r\n\r\nThe change introduces a new neural embedding backend with a deterministic fallback.\r\n\r\nThe `crates/knowdit-cg-static/src/embed.rs` file defines the embedding logic. The `cosine` function correctly handles zero-norm vectors by returning 0.0. The `fallback_vec` function correctly normalizes the vector and handles the case where the norm is zero, preventing division by zero. The `parse_host_port` function correctly rejects HTTPS URLs and parses host and port, including IPv6 addresses. The `neural_embed` function constructs HTTP requests, including conditional addition of a bearer token only for loopback addresses (`[IP_ADDRESS]`, `localhost`, `::1`), which is a good security practice to prevent sending credentials over cleartext to non-local endpoints. It correctly parses the JSON response and validates that the number of returned embeddings matches the number of input texts. The `embed_texts` function correctly implements the fallback logic. The provided tests cover these scenarios, including offline fallback and HTTPS rejection.\r\n\r\nThe `crates/knowdit-cg-static/src/fgw.rs` file introduces `link_semantics_findings_neural`, which correctly integrates the new embedding functionality. It uses `1.0 - crate::embed::cosine(s, f)` as the feature cost, which correctly translates higher cosine similarity (closer vectors) into lower cost (closer to 0.0), as expected for a distance metric. The structure Jaccard similarity calculation is consistent with the existing `link_semantics_findings` function.\r\n\r\nThe `crates/knowdit-cg-static/src/lib.rs` file correctly adds `pub mod embed;` to expose the new module.\r\n\r\nThe `tools/embed_server.py` file provides a compatible local server. It correctly handles the `/v1/embeddings` endpoint, parses the input, uses `SentenceTransformer` to encode texts with normalization, and formats the output as expected by the Rust client. The use of `[IP_ADDRESS]` as a placeholder is consistent with the Rust client's default URL and loopback check.\r\n\r\nNo defects were found.\r\n\r\nVERDICT: CLEAR"
+ },
+ "adjudication": {
+  "denial": "reviews/gate_20261124-054532.md",
+  "outcomes": {
+   "fixed": 3
+  },
+  "detail": ".adversary/adjudications.json"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261124-054840.md": {
+   "embedded": "c935eb67ac0bdd581833b80562fc50054c613d32f45055aeb1a9277295729440",
+   "disk": "c935eb67ac0bdd581833b80562fc50054c613d32f45055aeb1a9277295729440"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "NyCtJ6gxQpRzUGueWo69bDRONKn787ataaEQYiMLKbQZldicZ1AZJCxVRHu3BX+z2HfCjn+9+LhZ8XWru6kQAQ==",
+ "mac": "c987aa1fc1a22d408022a074db70893a96df8ec57956a2e80c139911f75fb02e"
+}
