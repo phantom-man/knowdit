@@ -199,6 +199,53 @@ pub struct SolidityExportStateVariableDotArgs {
     pub include_isolated_state_variables: bool,
 }
 
+/// Repack source shards so call-graph cycles stay in one shard (H1 proxy).
+/// Loads the stored static call graph (build it first with `static solidity call-graph`).
+#[derive(Args, Debug, Clone)]
+pub struct SolidityRepackShardsArgs {
+    #[command(flatten)]
+    pub project: crate::cli::ProjectArgs,
+    #[command(flatten)]
+    pub db: crate::cli::DatabaseArgs,
+    /// Per-shard input token budget.
+    #[arg(long, default_value_t = 30000)]
+    pub budget: usize,
+    /// Optional JSON dump of the repacked shard plan.
+    #[arg(long, short = 'o')]
+    pub output: Option<PathBuf>,
+}
+impl SolidityRepackShardsArgs {
+    pub async fn run(self) -> Result<()> {
+        let crate::cli::LoadedRepoDatabase { repo, .. } = self
+            .project
+            .to_repo_database(self.db.database_path.clone(), self.db.variant_render_cap)
+            .await?;
+        let cg = repo.load_call_graph().await?;
+        let shards = knowdit_cg_static::shard_pack::pack_shards(&cg, self.budget);
+        for (i, s) in shards.iter().enumerate() {
+            println!(
+                "shard {:>3} fns={:>3} tokens~{:>6} cycle={}",
+                i,
+                s.function_ids.len(),
+                s.tokens_est,
+                s.signature.as_deref().unwrap_or("-")
+            );
+        }
+        println!("{} shard(s) from {} contract(s)", shards.len(), cg.contracts.len());
+        if let Some(out) = self.output {
+            let plan: Vec<serde_json::Value> = shards
+                .iter()
+                .map(|s| serde_json::json!({ "function_ids": s.function_ids, "tokens_est": s.tokens_est, "signature": s.signature }))
+                .collect();
+            if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&out, serde_json::to_string_pretty(&plan)?)?;
+            tracing::info!("Wrote repacked shard plan to {}", out.display());
+        }
+        Ok(())
+    }
+}
 impl ExtractSolidityArgs {
     pub async fn run(self) -> Result<()> {
         let config = build_solidity_extraction_config(&self.source, &self.scope)?;

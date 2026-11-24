@@ -204,6 +204,9 @@ pub enum StaticSolidityCommands {
 
     /// Export the stored Solidity state-variable read/write graph (populated by `call-graph`) as DOT/PDF
     ExportStateVariableDot(cmd::solidity::SolidityExportStateVariableDotArgs),
+
+    /// Repack source shards so call-graph cycles stay in one shard (loads stored call-graph)
+    RepackShards(cmd::solidity::SolidityRepackShardsArgs),
 }
 
 // ---------------------------------------------------------------------------
@@ -373,6 +376,7 @@ impl StaticSolidityCommand {
             StaticSolidityCommands::CallGraph(args) => args.run().await?,
             StaticSolidityCommands::ExportCallGraphDot(args) => args.run().await?,
             StaticSolidityCommands::ExportStateVariableDot(args) => args.run().await?,
+            StaticSolidityCommands::RepackShards(args) => args.run().await?,
         }
         Ok(())
     }
