@@ -1,0 +1,51 @@
+{
+ "type": "CLEAR",
+ "commit": "1f19d9505b82aea15828638646f24a96e40585e0",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261124-072030",
+ "files": {
+  "crates/knowdit-kg/src/agents.rs": {
+   "sha": "b8db798b50a261ff3cd43a4a74516c4a73511998ed25a00eefc62b4787866587",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-072025",
+   "artifact": ".adversary\\reviews\\gate_20261124-072025.md"
+  },
+  "crates/knowdit-kg/src/extract_tools.rs": {
+   "sha": "7db1a3d4fcbe617d2c18fd9ab3fd0d43a88bc5f10ae674d60ad27b8689810d46",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-072025",
+   "artifact": ".adversary\\reviews\\gate_20261124-072025.md"
+  },
+  "crates/knowdit-kg/src/learn.rs": {
+   "sha": "2c7ad25fb12219513c79faa16003b1132f1a406ff60f2efbbba404d388b42386",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-072025",
+   "artifact": ".adversary\\reviews\\gate_20261124-072025.md"
+  },
+  "crates/knowdit-kg/src/lib.rs": {
+   "sha": "666d4a0c7e69f56fc471459c367e11383265640893f7ea94d9c419db967f868e",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-072025",
+   "artifact": ".adversary\\reviews\\gate_20261124-072025.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261124-072025.md": "model: @preset/gate-gemini-25-flash | provider: anthropic-messages | usage: {'prompt_tokens': 0, 'completion_tokens': 2314, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['crates/knowdit-kg/src/agents.rs', 'crates/knowdit-kg/src/extract_tools.rs', 'crates/knowdit-kg/src/learn.rs', 'crates/knowdit-kg/src/lib.rs'] | prompt: gate/adversary-review/gemini-25-flash@1 (langfuse) | caller: unknown\r\n\r\nVERDICT: CLEAR"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261124-072025.md": {
+   "embedded": "0ef3c4b0edd4ec59b44568129bf9c646996bb59182d90297bfa33932dc2bc447",
+   "disk": "0ef3c4b0edd4ec59b44568129bf9c646996bb59182d90297bfa33932dc2bc447"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "SnRzS4phDadjIkrSguu6KFmnfCE4O6Xbs0xIUk7YcBR7voY29UMmOSM+wJbdyaN2XCn/eLMsaivfQUFOHEidCQ==",
+ "mac": "1212cd6eba5fa5fbb5d198f0b2b6cc767c165ca58cad2cdc74a1859f8436e014"
+}
