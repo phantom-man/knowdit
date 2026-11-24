@@ -179,6 +179,39 @@ pub fn anchored(cg: &CallGraph, fn_ids: &[i32], container_id: i32) -> bool {
     }
 }
 
+/// Anchoring gate for an emitted semantic: every (function, contract) anchor must
+/// resolve to a real function, and all anchored contracts must lie in ONE shard group
+/// (cycle-coherent). Unresolved or cross-shard anchors => unanchored (reject).
+pub fn functions_anchored(cg: &CallGraph, funcs: &[(String, String)]) -> bool {
+    if funcs.is_empty() {
+        return false;
+    }
+    let groups = shard_groups(cg);
+    let mut anchored_ids: BTreeSet<i32> = BTreeSet::new();
+    for (fname, cpath) in funcs {
+        let norm = cpath.replace('\\', "/");
+        let mut found = None;
+        for c in cg.contracts.values() {
+            let cp = c.relative_file_path.to_string_lossy().replace('\\', "/");
+            if cp == norm || cp.ends_with(&format!("/{}", norm)) || norm.ends_with(&format!("/{}", cp)) {
+                if let Some(fn_) = c.functions.iter().find(|f| &f.name == fname) {
+                    found = Some(fn_.id);
+                    break;
+                }
+            }
+        }
+        match found {
+            Some(id) => { anchored_ids.insert(id); }
+            None => return false,
+        }
+    }
+    // The anchored FUNCTIONS themselves must all lie in ONE shard group (cycle-coherent).
+    groups.iter().any(|g| {
+        let ids: BTreeSet<i32> = g.iter().copied().collect();
+        anchored_ids.iter().all(|fid| ids.contains(fid))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -237,6 +270,24 @@ mod tests {
             let has = |i: i32| s.function_ids.contains(&i);
             assert!(!(has(1) ^ has(2)) && !(has(2) ^ has(3)), "cycle split across shards");
         }
+    }
+
+    #[test]
+    fn anchored_functions_must_share_one_group() {
+        // contract1: A<->B cycle + C singleton; contract2: D singleton.
+        let mut cg = graph();
+        cg.contracts.get_mut(&1).unwrap().functions.push(func(5, "C", vec![]));
+        // A(id1) in cycle group, D(id4) in singleton group -> must reject.
+        assert!(!functions_anchored(&cg, &[("A".into(), "a.sol".into()), ("D".into(), "b.sol".into())]));
+        assert!(functions_anchored(&cg, &[("A".into(), "a.sol".into()), ("B".into(), "a.sol".into())]));
+    }
+
+    #[test]
+    fn functions_anchored_co_shard() {
+        let cg = graph();
+        assert!(functions_anchored(&cg, &[("A".into(), "a.sol".into()), ("B".into(), "a.sol".into())]));
+        assert!(!functions_anchored(&cg, &[("A".into(), "a.sol".into()), ("D".into(), "b.sol".into())]));
+        assert!(!functions_anchored(&cg, &[("Z".into(), "a.sol".into())]));
     }
 
     #[test]

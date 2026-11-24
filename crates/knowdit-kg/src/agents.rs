@@ -27,6 +27,8 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use knowdit_repo_model::cg::CallGraph;
+use knowdit_cg_static::shard_pack;
 
 use llmy::agent::tool::ToolBox;
 use llmy::agent::{LLMYError, tool};
@@ -187,6 +189,7 @@ impl CategorizeRunner {
 )]
 struct EmitSemanticTool {
     buffer: Arc<AgentChunkBuffer<ExtractedSemantic>>,
+    call_graph: Option<Arc<CallGraph>>,
 }
 
 impl EmitSemanticTool {
@@ -199,6 +202,12 @@ impl EmitSemanticTool {
                 "error: `functions` must contain at least one entry pointing at the source"
                     .to_string(),
             );
+        }
+        if let Some(cg) = &self.call_graph {
+            let anchors: Vec<(String, String)> = args.functions.iter().map(|fn_| (fn_.name.clone(), fn_.contract.clone())).collect();
+            if !shard_pack::functions_anchored(cg, &anchors) {
+                return Ok("error: semantic anchors are not co-located in one call-graph shard".to_string());
+            }
         }
         Ok(self.buffer.push_with_message(args, "semantic").await)
     }
@@ -230,6 +239,7 @@ pub struct SemanticChunkExtractor {
     pub system_prompt: String,
     pub user_prompt: String,
     pub label: String,
+    pub call_graph: Option<Arc<CallGraph>>,
 }
 
 impl SemanticChunkExtractor {
@@ -239,6 +249,7 @@ impl SemanticChunkExtractor {
         let mut tools = ToolBox::new();
         tools.add_tool(EmitSemanticTool {
             buffer: buffer.clone(),
+            call_graph: self.call_graph.clone(),
         });
         tools.add_tool(FinalizeSemanticExtractTool {
             buffer: buffer.clone(),

@@ -15,6 +15,8 @@ use itertools::Itertools;
 pub use knowdit_kg_model::{ExtractedFinding, ExtractedFunction, ExtractedSemantic};
 use llmy::client::client::LLM;
 use llmy::client::context::TokenCursor;
+use knowdit_repo_model::cg::CallGraph;
+use knowdit_cg_static::shard_pack;
 use llmy::client::model::OpenAIModel;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -560,6 +562,63 @@ impl ProjectData {
         chunk_input_budget: Option<usize>,
         sink: Option<&crate::checkpoint::CheckpointSink>,
     ) -> Result<Vec<ExtractedSemantic>> {
+        self.extract_semantics_inner(llm, categories, agent_options, chunk_input_budget, sink, None).await
+    }
+
+    /// Graph-aware variant: co-locates call-graph cycles in one shard (H1 proxy) and
+    /// enables the emit_semantic anchoring gate. See docs/SEMANTIC_EXTRACTION_REVIEW_AND_MATH.md.
+    pub async fn extract_semantics_with_graph(
+        &self,
+        llm: &LLM,
+        categories: &[DeFiCategory],
+        agent_options: &AgentRunOptions,
+        chunk_input_budget: Option<usize>,
+        sink: Option<&crate::checkpoint::CheckpointSink>,
+        call_graph: &CallGraph,
+    ) -> Result<Vec<ExtractedSemantic>> {
+        self.extract_semantics_inner(llm, categories, agent_options, chunk_input_budget, sink, Some(call_graph)).await
+    }
+
+    /// Reorder the project body's `### path` source sections so contracts belonging to the
+    /// same call-graph shard group (cycle) are contiguous, keeping cycles inside one shard.
+    fn graph_ordered_body(&self, cg: &CallGraph) -> String {
+        let body = self.build_project_prompt_body();
+        let mut order: Vec<String> = Vec::new();
+        for g in shard_pack::shard_groups(cg) {
+            for cid in &g {
+                if let Some(c) = cg.contracts.get(cid) {
+                    let p = c.relative_file_path.to_string_lossy().replace('\\', "/");
+                    if !order.contains(&p) { order.push(p); }
+                }
+            }
+        }
+        let Some(idx) = body.find("### ") else { return body; };
+        let header = body[..idx].to_string();
+        let rest = &body[idx..];
+        let mut sections: Vec<(String, String)> = Vec::new();
+        for part in rest.split("### ").skip(1) {
+            let path = part.lines().next().unwrap_or("").trim().to_string();
+            sections.push((path, format!("### {}", part)));
+        }
+        let rank = |p: &String| -> usize {
+            let n = p.replace('\\', "/");
+            order.iter().position(|o| n.ends_with(o) || o.ends_with(&n)).unwrap_or(usize::MAX)
+        };
+        sections.sort_by_key(|(p, _)| rank(p));
+        let mut out = header;
+        for (_, s) in sections { out.push_str(&s); }
+        out
+    }
+
+    async fn extract_semantics_inner(
+        &self,
+        llm: &LLM,
+        categories: &[DeFiCategory],
+        agent_options: &AgentRunOptions,
+        chunk_input_budget: Option<usize>,
+        sink: Option<&crate::checkpoint::CheckpointSink>,
+        call_graph: Option<&CallGraph>,
+    ) -> Result<Vec<ExtractedSemantic>> {
         let system_prompt = prompts::GENERAL_ROLE_SYSTEM;
         let model = &llm.model;
         let debug_key = self.debug_key("extract");
@@ -575,7 +634,10 @@ impl ProjectData {
             None => total_budget.saturating_sub(sys_tokens + suffix_tokens),
         };
 
-        let all_files = self.build_project_prompt_body();
+        let all_files = match call_graph {
+            Some(cg) => self.graph_ordered_body(cg),
+            None => self.build_project_prompt_body(),
+        };
         let Some(mut cursor) = TokenCursor::new(all_files, model.clone()) else {
             return Err(KgError::other(
                 "Failed to initialize TokenCursor for extraction",
@@ -658,6 +720,7 @@ impl ProjectData {
                 system_prompt: system_prompt.to_string(),
                 user_prompt,
                 label: chunk_label,
+                call_graph: call_graph.map(|c| std::sync::Arc::new(c.clone())),
             };
             let chunk_semantics = extractor.run().await?;
             tracing::info!(
