@@ -1,0 +1,58 @@
+{
+ "type": "CLEAR",
+ "commit": "d6b11b37ed3cf12635146a26a9c2cba184d9847c",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261124-031102",
+ "files": {
+  ".githooks/post-commit": {
+   "sha": "377b1254489c2fe84091aa3cc269f4083baa3d44d3781e47c635e88249387268",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261124-031017",
+   "artifact": ".adversary\\reviews\\gate_20261124-031017.md"
+  },
+  ".githooks/pre-commit": {
+   "sha": "72864701ba348f1f0486994283215aa3dd35341edc15b4ce9276ced457cd32b9",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261124-031017",
+   "artifact": ".adversary\\reviews\\gate_20261124-031017.md"
+  },
+  ".githooks/pre-push": {
+   "sha": "8d44759bf78782df62fbdcb27189abfd1b5ea96d03ac7ccd0c8d3c3609d7b761",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261124-031017",
+   "artifact": ".adversary\\reviews\\gate_20261124-031017.md"
+  },
+  ".mcp.json": {
+   "sha": "e5dd41e863afe5eed0c14c0d58367fd33bc188b097ba89ae54b424ecd6d36622",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261124-031017",
+   "artifact": ".adversary\\reviews\\gate_20261124-031017.md"
+  },
+  "crates/knowdit-kg/src/agent_runner.rs": {
+   "sha": "972a93d0f34c47d564fe50cc403d8fcfb2233592f8483deb1ca4e0de1d41f414",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261124-031017",
+   "artifact": ".adversary\\reviews\\gate_20261124-031017.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261124-031017.md": "model: @preset/gate-haiku-55 | provider: anthropic-messages | usage: {'prompt_tokens': 7837, 'completion_tokens': 1095, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['.githooks/post-commit', '.githooks/pre-commit', '.githooks/pre-push', '.mcp.json', 'crates/knowdit-kg/src/agent_runner.rs'] | prompt: gate/adversary-review/haiku-55@2 (langfuse) | caller: unknown\r\n\r\nNo defects found in the staged change. The Rust change adds `collected: usize` to `AgentRunOutcome` and populates it from `buffer.len().await` at the return site, where `buffer` is already in scope and used earlier in the same function. The loop has exited by then, so there is no new race. Other struct literals of `AgentRunOutcome` may exist outside the visible window, but the provided bytes do not show any, so I make no finding on that.\r\n\r\nThe hook changes only flip file modes to 100755 and keep the existing fail-closed and warn-only behaviour. The `.mcp.json` addition is machine-specific configuration, but it is not a defect under the stated rules.\r\n\r\nVERDICT: CLEAR"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261124-031017.md": {
+   "embedded": "17510a43bdb22909974bcf9813fda40498cd8883ef58e05c1253896139a96f55",
+   "disk": "17510a43bdb22909974bcf9813fda40498cd8883ef58e05c1253896139a96f55"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "g1X6svQtRZdEUb5lBY1KdDFPUKIUoefahG3NvPuydd6lVcmPA56IZCzLzM14HVbYZVRqJW0ItPrn/zxgiqxlDQ==",
+ "mac": "1b210dd9f3c6e0541da3d8c93b1549a9982b949edbc2d1797d8190c3e37c7120"
+}
