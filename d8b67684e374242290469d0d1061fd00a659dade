@@ -1,0 +1,51 @@
+{
+ "type": "CLEAR",
+ "commit": "d8b67684e374242290469d0d1061fd00a659dade",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261124-063945",
+ "files": {
+  "crates/knowdit-cg-static/src/shard_pack.rs": {
+   "sha": "d8ce4d30d794a33409f647e537b6d4e1aa7817be6badfbb196bcf41b3f309c2a",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-063943",
+   "artifact": ".adversary\\reviews\\gate_20261124-063943.md"
+  },
+  "crates/knowdit-kg/src/learn.rs": {
+   "sha": "3d5e046a1de471dc6fc8ebfb87ea90d414f5bf2d088d834e21be9e578abf321f",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-063943",
+   "artifact": ".adversary\\reviews\\gate_20261124-063943.md"
+  },
+  "crates/knowdit/src/cmd/solidity.rs": {
+   "sha": "fc509cf24261bb4bd4ff7240d6906958d919bbbde2c4713af4d73728abab7275",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261124-063943",
+   "artifact": ".adversary\\reviews\\gate_20261124-063943.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261124-063943.md": "model: @preset/gate-gemini-25-flash | provider: anthropic-messages | usage: {'prompt_tokens': 0, 'completion_tokens': 3585, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['crates/knowdit-cg-static/src/shard_pack.rs', 'crates/knowdit-kg/src/learn.rs', 'crates/knowdit/src/cmd/solidity.rs'] | prompt: gate/adversary-review/gemini-25-flash@1 (langfuse) | caller: unknown\r\n\r\nVERDICT: CLEAR"
+ },
+ "adjudication": {
+  "denial": "reviews/gate_20261124-063658.md",
+  "outcomes": {
+   "fixed": 1
+  },
+  "detail": ".adversary/adjudications.json"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261124-063943.md": {
+   "embedded": "29a29fda6e38cff85116b446728a1c359e686b9a1c88fc0ccc783d5eb3b97af7",
+   "disk": "29a29fda6e38cff85116b446728a1c359e686b9a1c88fc0ccc783d5eb3b97af7"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "sgNNgcbdRzcf6FyBOuz46ba+q9HOPRLVyBMmusDS54sFkFBxqxH8LEP7CgiLVqn+ivU0jNZ48n/dCBBKf56RBA==",
+ "mac": "432af7acccabe76c5472f8b501911d037d089882d8150670d0a149f688791924"
+}
