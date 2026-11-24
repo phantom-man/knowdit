@@ -338,6 +338,22 @@ impl ProjectData {
         Ok(ExtractResult { categories, semantics: deduped, findings: Vec::new(), in_project_links: InProjectLinks::default() })
     }
 
+    /// Categorize then extract over MATERIALIZED shards (resume-safe, tool-enabled).
+    pub async fn categorize_and_extract_from_shards(
+        &self,
+        shards_dir: &std::path::Path,
+        llm: &LLM,
+        agent_options: &AgentRunOptions,
+        sink: Option<&crate::checkpoint::CheckpointSink>,
+        call_graph: &CallGraph,
+        backings: Option<&ExtractBackings>,
+    ) -> Result<ExtractResult> {
+        let categories = self.categorize(llm, agent_options).await?;
+        let sems = self.extract_semantics_from_shards(shards_dir, llm, &categories, agent_options, sink, Some(call_graph), backings).await?;
+        let deduped = Self::dedup_semantics(sems);
+        Ok(ExtractResult { categories, semantics: deduped, findings: Vec::new(), in_project_links: InProjectLinks::default() })
+    }
+
     /// Phase 2: Merge extracted semantics with existing KB and write to DB.
     /// MUST be run serially (one project at a time) to avoid merge conflicts.
     /// Commit one project's full merge output to the historical KG.

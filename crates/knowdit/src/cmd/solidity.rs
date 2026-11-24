@@ -254,6 +254,52 @@ impl SolidityRepackShardsArgs {
         Ok(())
     }
 }
+/// Run the graph-aware, tool-enabled extraction over MATERIALIZED shards (1+ shard files).
+#[derive(Args, Debug, Clone)]
+pub struct SolidityExtractShardsArgs {
+    #[command(flatten)]
+    pub llm: OpenAISetup,
+    #[command(flatten)]
+    pub project: crate::cli::ProjectArgs,
+    #[command(flatten)]
+    pub db: crate::cli::DatabaseArgs,
+    /// Directory with shard-NNNN.sol + manifest.json (from repack-shards --out-dir).
+    #[arg(long = "shards-dir")]
+    pub shards_dir: PathBuf,
+    #[arg(long, default_value_t = 60)]
+    pub max_agent_steps: usize,
+    #[arg(long, short = 'o')]
+    pub output: Option<PathBuf>,
+}
+impl SolidityExtractShardsArgs {
+    pub async fn run(self) -> Result<()> {
+        let project = self.project.to_project_data().await?;
+        let crate::cli::LoadedRepoDatabase { repo, .. } = self
+            .project
+            .to_repo_database(self.db.database_path.clone(), self.db.variant_render_cap)
+            .await?;
+        let cg = repo.load_call_graph().await?;
+        let mut backings = knowdit_kg::learn::ExtractBackings::default();
+        if let Ok(st) = repo.load_storage_graph().await {
+            backings.storage_deps = knowdit_cg_static::shard_pack::storage_dependencies(&cg, &st);
+        }
+        if let Ok(ex) = repo.load_project_semantics().await {
+            for s in &ex { for fn_ in &s.functions { backings.existing_nodes.push((fn_.contract.clone(), s.name.clone())); } }
+        }
+        let llm = self.llm.clone().to_llm().await;
+        let legacy = knowdit_kg::project_loader::ProjectData::from_project_view(&project);
+        let options = knowdit_kg::agent_runner::AgentRunOptions::new(self.max_agent_steps);
+        let result = legacy
+            .categorize_and_extract_from_shards(&self.shards_dir, &llm, &options, None, &cg, Some(&backings))
+            .await?;
+        println!("extracted {} semantics from shards in {}", result.semantics.len(), self.shards_dir.display());
+        if let Some(out) = self.output {
+            if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) { std::fs::create_dir_all(parent)?; }
+            std::fs::write(&out, serde_json::to_string_pretty(&result.semantics)?)?;
+        }
+        Ok(())
+    }
+}
 impl ExtractSolidityArgs {
     pub async fn run(self) -> Result<()> {
         let config = build_solidity_extraction_config(&self.source, &self.scope)?;

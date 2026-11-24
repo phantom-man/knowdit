@@ -280,6 +280,8 @@ pub enum AgenticSolidityCommands {
 
     /// LLM agent: analyze Solidity storage read/write per function (tree-sitter only)
     StorageGraph(cmd::solidity::SolidityStorageGraphArgs),
+    /// Graph-aware tool-enabled extraction over materialized shards
+    ExtractShards(cmd::solidity::SolidityExtractShardsArgs),
 }
 
 // ---------------------------------------------------------------------------
@@ -413,6 +415,7 @@ impl AgenticSolidityCommand {
         match self.command {
             AgenticSolidityCommands::CallGraph(args) => args.run().await?,
             AgenticSolidityCommands::StorageGraph(args) => args.run().await?,
+            AgenticSolidityCommands::ExtractShards(args) => args.run().await?,
         }
         Ok(())
     }
