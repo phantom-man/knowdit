@@ -1,0 +1,37 @@
+{
+ "type": "CLEAR",
+ "commit": "7a1e6c91d64229aa8e4637fe2b593e240caa90b3",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261125-112141",
+ "files": {
+  "crates/knowdit-cg-static/src/shard_pack.rs": {
+   "sha": "5fff47406544618dacd118f80b899b0cf00dd0b32048242f5fb9a7daa2a38bfb",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-112136",
+   "artifact": ".adversary\\reviews\\gate_20261125-112136.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261125-112136.md": "model: @preset/gate-haiku-55 | provider: anthropic-messages | usage: {'prompt_tokens': 18610, 'completion_tokens': 2245, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['.colibri_reviews/shard_pack.rs__process__5fff4740.md', 'crates/knowdit-cg-static/src/shard_pack.rs'] | prompt: gate/adversary-review/haiku-55@2 (langfuse) | caller: unknown\r\n\r\nI found no defect the change introduces. I traced the main paths against the visible bytes:\r\n\r\n- **`cycle_signature`**: the walk terminates because every iteration adds the current node to `visited` and the next node is always drawn from unvisited group members. On the `cycle_signature_follows_call_edges_not_sorted_ids` graph it yields `A -> C -> B -> A`. On the `cycle_signature_covers_whole_scc` graph it visits 1, 2, 3, so A, B and C all appear.\r\n- **`adjacency`**: every known contract function id gets an `adj` entry in the outer loop, so dropping unknown `to_id` targets does not remove a real node. Unresolved targets no longer create phantom singletons.\r\n- **`anchored_function_id`**: the exact-path result takes precedence. If that candidate set exists but lacks the function name, the code returns `None` and does not fall back to suffix matching, so it fails closed. Duplicate names within one contract, or a suffix match across two contracts, return `None`.\r\n- **`functions_anchored`**: the gate still requires all anchored ids to share one shard group. The `anchor_exact_path_beats_suffix` case (ids 6 and 7 in one cycle) satisfies that.\r\n\r\nThe process artifact's sha256 and the \"13 passed\" claim cannot be checked from the provided bytes. Those are not code defects, so I have not raised them.\r\n\r\nVERDICT: CLEAR"
+ },
+ "adjudication": {
+  "denial": "reviews/gate_20261125-111824.md",
+  "outcomes": {
+   "fixed": 1
+  },
+  "detail": ".adversary/adjudications.json"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261125-112136.md": {
+   "embedded": "46c13d811cb9886ce8637c5cabb17b2feb1af9c79904b27c44081c57c11122ef",
+   "disk": "46c13d811cb9886ce8637c5cabb17b2feb1af9c79904b27c44081c57c11122ef"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "m7hQr7UfB910FfpqhU8YzKrRVfkA/BWjZ9PX3fyZQfkoo3i+XdRCedbWrpx3BNK9C6xbEhzECT2P00Gyq78OBA==",
+ "mac": "1702706850a33e5f3c6ddf42c94d3cd2b311d2f5b215bb14326889352c63a23b"
+}
