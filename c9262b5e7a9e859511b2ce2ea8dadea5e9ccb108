@@ -1,0 +1,37 @@
+{
+ "type": "CLEAR",
+ "commit": "c9262b5e7a9e859511b2ce2ea8dadea5e9ccb108",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261125-121953",
+ "files": {
+  "crates/knowdit-project/src/data.rs": {
+   "sha": "0b679e6470f533bd70385b5c45c5dc7a0f041845514b8d19a18faa0f7bc370d7",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "WARN",
+   "when": "20261125-121949",
+   "artifact": ".adversary\\reviews\\gate_20261125-121949.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261125-121949.md": "model: @preset/gate-haiku-55 | provider: anthropic-messages | usage: {'prompt_tokens': 7746, 'completion_tokens': 1599, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['crates/knowdit-project/src/data.rs'] | prompt: gate/adversary-review/haiku-55@2 (langfuse) | caller: unknown\r\n\r\nLOW `crates/knowdit-project/src/data.rs` `ProjectSpec::parse`, line ~386: the closure `let drive_colon = |v: &str| v.len() >= 2` is defined but never called. The comment above it says \"the colon is not a drive colon,\" but the only guard on the platform-id split is `!path.ends_with(':')` and the pid character checks. Trigger: any call to `ProjectSpec::parse`. Impact: the compiler emits an unused-variable warning, which fails the build if the crate denies warnings. The intended drive-colon check is also absent. In practice the existing `\\`/`/` checks on the suffix cover the Windows cases the tests exercise, so the parse results are correct for those inputs. The code is dead and the comment overstates what it does.\r\n\r\nVERDICT: WARN"
+ },
+ "adjudication": {
+  "denial": "reviews/gate_20261125-121940.md",
+  "outcomes": {
+   "cleared-unedited": 1
+  },
+  "detail": ".adversary/adjudications.json"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261125-121949.md": {
+   "embedded": "6c2898201a914d3db4f7e4029d624edea1521e8e7d6b3261b485f2ded7ce9e69",
+   "disk": "6c2898201a914d3db4f7e4029d624edea1521e8e7d6b3261b485f2ded7ce9e69"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "3nm/VtwVQNRFaYhE6gE3CMahlY9UyVsIZYM8vHXBuQtbWgQd4msTKU0eB1eBQuk2z76ZEpLVwh2vfKzCLql2Bg==",
+ "mac": "08850654f4dce6ed37d30c6f5c16c90708bdca43ab092a44a28040df84ea38e8"
+}
