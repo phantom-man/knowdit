@@ -1,0 +1,30 @@
+{
+ "type": "CLEAR",
+ "commit": "998cc3cf26e071a1486929ac5d07ca119c9ddf40",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261125-123658",
+ "files": {
+  ".github/workflows/ci.yaml": {
+   "sha": "7a61f97027eb23bb43797e7d24024dbec9389fdbb1d0dbf04e50bcc543b30d86",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-123654",
+   "artifact": ".adversary\\reviews\\gate_20261125-123654.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261125-123654.md": "model: @preset/gate-haiku-55 | provider: anthropic-messages | usage: {'prompt_tokens': 2716, 'completion_tokens': 288, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['.github/workflows/ci.yaml'] | prompt: gate/adversary-review/haiku-55@2 (langfuse) | caller: unknown\r\n\r\nThe staged change adds a `workflow_dispatch:` trigger under `on:`, at the same two-space indent as `push:` and `pull_request:`, so the YAML stays valid. The concurrency group `${{ github.workflow }}-${{ github.ref }}` is defined for manual runs too, and `permissions: contents: read` is unchanged, so the new trigger adds no extra token scope. The rest of the workflow is untouched, and the non-failing clippy step is pre-existing and not made worse here.\r\n\r\nVERDICT: CLEAR"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261125-123654.md": {
+   "embedded": "1a486ba0fc066fe9a94e59015d284ac07532657551a537f9cc948b1d29823803",
+   "disk": "1a486ba0fc066fe9a94e59015d284ac07532657551a537f9cc948b1d29823803"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "UMcFIV86+b0jf6wp7T1mokIgjb+hcR8fcQAnMfZQ/AYBcvSAlUsnb+qXeueQiPAOK1vHRBQsmBhX2ayw9DtUCw==",
+ "mac": "9737f7b02d2d479511b82a33807498010741a2927367b80980d6d64f113edf38"
+}
