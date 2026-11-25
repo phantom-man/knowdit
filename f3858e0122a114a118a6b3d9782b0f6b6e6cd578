@@ -1,0 +1,30 @@
+{
+ "type": "CLEAR",
+ "commit": "f3858e0122a114a118a6b3d9782b0f6b6e6cd578",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261125-131729",
+ "files": {
+  "docs/ci_status.json": {
+   "sha": "343cf846161999ea4c7f3a75de60396543bd7ef69f3a711d82ff7107b62be7aa",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261125-131725",
+   "artifact": ".adversary\\reviews\\gate_20261125-131725.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261125-131725.md": "model: @preset/gate-gemini-25-flash | provider: anthropic-messages | usage: {'prompt_tokens': 0, 'completion_tokens': 879, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['docs/ci_status.json'] | prompt: gate/adversary-review/gemini-25-flash@1 (langfuse) | caller: unknown\r\n\r\nVERDICT: CLEAR"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261125-131725.md": {
+   "embedded": "18beac990ce5e6d6a4473f2b5a455474c5fd046b7fba9aafccacf3f5bb147f2b",
+   "disk": "18beac990ce5e6d6a4473f2b5a455474c5fd046b7fba9aafccacf3f5bb147f2b"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "chyjp3x4ewdPINagloLybm6greLTUw6aB0Aw5BPUtCQAz8ztnsea239WU9b+Rt/doQxEcBdqsQ97H95SJFOiAA==",
+ "mac": "e19ed9eb443ae72a855dec662939e6e7721659ceae01ad68a3390f3d0c261735"
+}
