@@ -1,0 +1,30 @@
+{
+ "type": "CLEAR",
+ "commit": "03d4275f218e5759cbf71cece4952110883a9239",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261125-114809",
+ "files": {
+  "crates/knowdit-kg/src/learn.rs": {
+   "sha": "bffe66ff68b63a2ee5fd8c5bb5651748a15781c68587bc1408bfbb9d32e2ee64",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261125-114805",
+   "artifact": ".adversary\\reviews\\gate_20261125-114805.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261125-114805.md": "model: @preset/gate-gemini-25-flash | provider: anthropic-messages | usage: {'prompt_tokens': 0, 'completion_tokens': 3815, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['crates/knowdit-kg/src/learn.rs'] | prompt: gate/adversary-review/gemini-25-flash@1 (langfuse) | caller: unknown\r\n\r\nThe changes in `crates/knowdit-kg/src/learn.rs` primarily address several audit findings (F5, F6, F7, F8) related to checkpointing, call-graph integration, and prompt body ordering.\r\n\r\n1.  **Checkpoint Hashing (`resume_signature_hash` and `call_graph_gating`):** The logic for generating a checkpoint hash has been updated in both `extract_semantics_from_shards` and `extract_semantics_inner`. Previously, the hash was based only on the chunk content. Now, it correctly incorporates the `user_suffix` (derived from categories) and a `gating` signature (derived from call-graph features), as seen in `let hash = resume_signature_hash(&content, &user_suffix, &gating);`. This prevents the reuse of stale checkpoint data when the prompt context changes, directly addressing audit findings F5 and F6. The new `resume_tests` module verifies this behavior.\r\n\r\n2.  **Shared `existing_nodes` for `LookupKgTool` (F8):**\r\n    *   In `extract_semantics_inner`, the `shared_existing` `Arc<Mutex<Vec<(String, String)>>>` is now initialized *before* the chunk processing loop. This ensures that `existing_nodes` accumulates extracted semantics across all chunks, making them visible to the `LookupKgTool` in subsequent chunks. Previously, it was re-initialized per chunk, preventing cross-chunk visibility.\r\n    *   When semantics are resumed from a checkpoint in `extract_semantics_from_shards` (lines 686-687) and `extract_semantics_inner` (lines 832-837), the stored semantics' functions are now added to `shared_existing`.\r\n    *   After a chunk is processed and new semantics are extracted in `extract_semantics_inner` (lines 920-925), these new semantics are also added to `shared_existing`.\r\n    *   The `SemanticChunkExtractor` is now correctly passed a clone of this `shared_existing` mutex.\r\n    These changes collectively ensure that the `LookupKgTool` has a complete view of all previously extracted and checkpointed semantics, which is crucial for its correctness and addresses audit finding F8.\r\n\r\n3.  **`graph_ordered_body` Path Ranking (F7):** The `rank` closure within `graph_ordered_body` has been refined. It now prioritizes an exact path match before falling back to a slash-bounded suffix match. This fixes an issue where a shorter, more general path (e.g., \"a.sol\") could incorrectly rank a more specific path (e.g., \"vendor/a.sol\"), as described in audit finding F7.\r\n\r\nAll identified changes are fixes for known issues and appear to be correctly implemented. No new defects are introduced by this change.\r\n\r\nVERDICT: CLEAR"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261125-114805.md": {
+   "embedded": "1bba9950622125cd3e511c7660b8b2f52db172fdef8d5031f77f15d06e292f03",
+   "disk": "1bba9950622125cd3e511c7660b8b2f52db172fdef8d5031f77f15d06e292f03"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "raKwlzws2IR01d5bZkt9Yef8auAd8Xcxpd8edlykilcd38xTVXnwIXgyQuisu/85zBWol1UIsHO2dRxeIsVFBw==",
+ "mac": "d50c29bd0a745e112df850691112842cb68414acd5b64636f3dc079605da3fd5"
+}
