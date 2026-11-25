@@ -9,8 +9,6 @@
 //!      own contract embedding (cross-branch anchors are far and rejected).
 //! Deterministic (no neural embedder): depth->radius, branch->angle.
 
-use std::collections::BTreeMap;
-
 use knowdit_repo_model::cg::CallGraph;
 
 /// A point in the 2-D Poincaré ball (open unit disk).
@@ -65,8 +63,15 @@ pub fn category_point() -> Poincare {
     point(0, 0.0)
 }
 
-/// Geodesic cone threshold: a function must sit close to its own contract embedding.
-pub const CONE: f64 = 1.0;
+/// Geodesic cone threshold: a function must sit close to its OWN contract
+/// embedding. A same-branch function is embedded at the contract angle plus
+/// at most 0.05 rad, which puts it at <= ~0.505 Poincare distance from its
+/// contract point. CONE=1.0 admitted cross-branch collisions between short
+/// contract names whose hash angles happen to be close (audit 20261124-042814:
+/// function "x" of contract "m" sat 0.54 from contract "d" and passed).
+/// Tighten to the same-branch bound plus a small margin, so a function can
+/// only pass against the contract whose exact branch it was embedded on.
+pub const CONE: f64 = 0.51;
 
 /// Hyperbolic anchoring gate: every (function, contract) anchor must satisfy the radial
 /// hierarchy and lie within the geodesic cone of its own contract branch.
@@ -122,6 +127,19 @@ mod tests {
         assert!(depth_radius(0) < depth_radius(1));
         assert!(depth_radius(1) < depth_radius(2));
         assert!(depth_radius(2) < 1.0);
+    }
+
+    // Regression: audit 20261124-042814. Short contract hash-angles collide;
+    // a function of "m" must NOT sit within the cone of contract "d".
+    #[test]
+    fn short_name_cross_branch_collision_rejected() {
+        let (cd, _) = embed_branch("d", "x");
+        let (_, fm) = embed_branch("m", "x");
+        assert!(fm.distance(&cd) > CONE,
+            "cross-branch m/x must be outside d's cone (dist={})", fm.distance(&cd));
+        // own-branch still passes
+        let (cd2, fd) = embed_branch("d", "x");
+        assert!(fd.distance(&cd2) <= CONE);
     }
 
     #[test]
