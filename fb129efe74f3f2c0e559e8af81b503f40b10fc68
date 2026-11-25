@@ -1,0 +1,44 @@
+{
+ "type": "CLEAR",
+ "commit": "fb129efe74f3f2c0e559e8af81b503f40b10fc68",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261125-113033",
+ "files": {
+  "crates/knowdit-cg-static/src/embed.rs": {
+   "sha": "bb30be27d9513e8ce14f8acde8d7033f7ce4ebe27f848d9ae19be2683a37c580",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "WARN",
+   "when": "20261125-113027",
+   "artifact": ".adversary\\reviews\\gate_20261125-113027.md"
+  },
+  "crates/knowdit-cg-static/src/fgw.rs": {
+   "sha": "acd41bb7553798d82eb14d0d9fb8c0d0fabd82923ab16cd54c2fe05534d5f73f",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "WARN",
+   "when": "20261125-113027",
+   "artifact": ".adversary\\reviews\\gate_20261125-113027.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261125-113027.md": "model: @preset/gate-haiku-55 | provider: anthropic-messages | usage: {'prompt_tokens': 22507, 'completion_tokens': 1541, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['.colibri_reviews/embed.rs__process__bb30be27.md', '.colibri_reviews/fgw.rs__process__acd41bb7.md', 'crates/knowdit-cg-static/src/embed.rs', 'crates/knowdit-cg-static/src/fgw.rs'] | prompt: gate/adversary-review/haiku-55@2 (langfuse) | caller: unknown\r\n\r\nLOW: `.colibri_reviews/` is not involved here. The finding is in `crates/knowdit-cg-static/src/fgw.rs`, in the new test `neural_linker_handles_backend_dimension_mismatch`. The test is cited as the regression for audit F13, but it does not exercise a backend mismatch. Its quoted assertion is `let links = link_semantics_findings_neural(&sem, &find, 0.5);`. The test never sets `KNOWDIT_EMBED_URL` and no server is running, so both `embed_texts` calls take the hashed fallback and both return 64-dim vectors. The mismatch branch is never reached. The test passes whether or not the new guard exists, so it cannot catch a regression of F13. Impact: the claimed coverage is false, but the production guard itself is correct, so this is informational only.\r\n\r\nI checked the production code paths and found no defect in the change:\r\n- `embed.rs` `neural_embed`: the `connect_timeout` loop, the finite-number check, the empty-input early return, and the uniform-dimension check all hold on the visible bytes.\r\n- `fgw.rs` `link_semantics_findings_neural`: `dim.is_none()` short-circuits before `dim.unwrap()`, so the new guard cannot panic on empty input.\r\n\r\nVERDICT: WARN"
+ },
+ "adjudication": {
+  "denial": "reviews/gate_20261125-112806.md",
+  "outcomes": {
+   "fixed": 1
+  },
+  "detail": ".adversary/adjudications.json"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261125-113027.md": {
+   "embedded": "dcb8ec79fdeffa77aff4258ec3c6c45c54aa95bafdd448abf8e1e41f4c03e413",
+   "disk": "dcb8ec79fdeffa77aff4258ec3c6c45c54aa95bafdd448abf8e1e41f4c03e413"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "ap0CLkEoRa58w/ztN1H8tPEs5oR+wPv1CAdvqcx4vusPSsQdEQF74e5cug4SaLRl/ficYxeKPekwKi/AUkheDw==",
+ "mac": "56ab1175d82d4af427fb1bcf0e5f587dc1a0bf155857efe2af88b0f6e29d0be5"
+}
