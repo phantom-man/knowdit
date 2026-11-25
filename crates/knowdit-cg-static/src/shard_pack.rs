@@ -15,6 +15,12 @@ use knowdit_repo_model::storage::StorageGraph;
 
 /// Function-level adjacency (caller -> callees) and id->name, over contract functions.
 fn adjacency(cg: &CallGraph) -> (BTreeMap<i32, Vec<i32>>, BTreeMap<i32, String>) {
+    // Only CONTRACT function ids are real graph nodes. A FunctionCall.to_id with
+    // no matching contract function is an unresolved external call: keep it out
+    // of the graph entirely, otherwise shard_groups emits a phantom singleton
+    // with tokens_est 0 and pack_shards publishes a nonexistent function id.
+    let known: BTreeSet<i32> = cg.contracts.values()
+        .flat_map(|c| c.functions.iter().map(|f| f.id)).collect();
     let mut adj: BTreeMap<i32, Vec<i32>> = BTreeMap::new();
     let mut names: BTreeMap<i32, String> = BTreeMap::new();
     for c in cg.contracts.values() {
@@ -22,8 +28,9 @@ fn adjacency(cg: &CallGraph) -> (BTreeMap<i32, Vec<i32>>, BTreeMap<i32, String>)
             adj.entry(f.id).or_default();
             names.insert(f.id, f.name.clone());
             for call in &f.calls {
-                adj.entry(f.id).or_default().push(call.to_id);
-                adj.entry(call.to_id).or_default();
+                if known.contains(&call.to_id) {
+                    adj.entry(f.id).or_default().push(call.to_id);
+                }
             }
         }
     }
@@ -124,10 +131,32 @@ fn tokens_est(cg: &CallGraph, ids: &[i32]) -> usize {
 
 /// Call-chain signature for a cycle group (structural anchor for the prompt).
 pub fn cycle_signature(cg: &CallGraph, ids: &[i32]) -> String {
-    let (_, names) = adjacency(cg);
-    let chain: Vec<String> = ids.iter().map(|i| names.get(i).cloned().unwrap_or_default()).collect();
-    let mut s = chain.join(" -> ");
-    if let Some(first) = chain.first() {
+    let (adj, names) = adjacency(cg);
+    // An SCC is not necessarily a simple cycle: e.g. 1->2->1 and 1->3->1 is one
+    // SCC where node 1 has two in-group successors. A single successor walk
+    // would silently drop node 3 from the anchor. Build a deterministic walk
+    // that VISITS EVERY member of the group: from the smallest id, follow the
+    // first not-yet-emitted in-group successor; if none exists, jump to the
+    // smallest unvisited member (deterministic) and continue. Close the chain
+    // back to the first id. The result names every member in real-edge order
+    // where such an edge exists, and never omits a member of the SCC.
+    let group: BTreeSet<i32> = ids.iter().copied().collect();
+    let mut chain: Vec<i32> = Vec::new();
+    let mut visited: BTreeSet<i32> = BTreeSet::new();
+    let mut cur: Option<i32> = ids.iter().copied().min();
+    while let Some(v) = cur {
+        chain.push(v);
+        visited.insert(v);
+        let next = adj.get(&v).and_then(|outs| outs.iter().copied()
+            .find(|to| group.contains(to) && !visited.contains(to)))
+            .or_else(|| group.iter().copied().find(|x| !visited.contains(x)));
+        cur = next;
+    }
+    let rendered: Vec<String> = chain.iter()
+        .map(|i| names.get(i).cloned().unwrap_or_else(|| format!("#{}", i)))
+        .collect();
+    let mut s = rendered.join(" -> ");
+    if let Some(first) = rendered.first() {
         s.push_str(" -> ");
         s.push_str(first);
     }
@@ -180,6 +209,45 @@ pub fn anchored(cg: &CallGraph, fn_ids: &[i32], container_id: i32) -> bool {
     }
 }
 
+/// Resolve an (function name, contract path) anchor to exactly one function id.
+/// Exact path equality is preferred over suffix matching so `a.sol` does not
+/// accidentally match a different contract `vendor/a.sol`. Within a contract,
+/// a bare function name must be UNIQUE: if two overloads share it, the anchor
+/// is ambiguous and must be rejected rather than resolved by iteration order.
+fn anchored_function_id(cg: &CallGraph, fname: &str, cpath: &str) -> Option<i32> {
+    let candidates: Vec<&knowdit_repo_model::cg::Contract> = cg.contracts.values()
+        .filter(|c| {
+            let cp = c.relative_file_path.to_string_lossy().replace('\\', "/");
+            cp == cpath
+        })
+        .collect();
+    // Fall back to slash-bounded SUFFIX matching in BOTH directions when no
+    // exact path exists (gate 20261125-111957): a shorter stored path `a.sol`
+    // must still match a repo-qualified anchor `contracts/a.sol`, and a longer
+    // stored path `vendor/a.sol` must match anchor `a.sol`. The boundary is a
+    // literal "/", so `MyToken.sol` never matches `Token.sol`.
+    let candidates: Vec<&knowdit_repo_model::cg::Contract> = if candidates.is_empty() {
+        cg.contracts.values().filter(|c| {
+            let cp = c.relative_file_path.to_string_lossy().replace('\\', "/");
+            cp.ends_with(&format!("/{}", cpath)) || cpath.ends_with(&format!("/{}", cp))
+        }).collect()
+    } else { candidates };
+    let mut id = None;
+    for c in &candidates {
+        let mut matches = c.functions.iter().filter(|f| f.name == fname);
+        if let Some(first) = matches.next() {
+            if matches.next().is_some() {
+                return None; // ambiguous overload within this contract
+            }
+            if id.is_some() {
+                return None; // same path suffix matched more than one contract
+            }
+            id = Some(first.id);
+        }
+    }
+    id
+}
+
 /// Anchoring gate for an emitted semantic: every (function, contract) anchor must
 /// resolve to a real function, and all anchored contracts must lie in ONE shard group
 /// (cycle-coherent). Unresolved or cross-shard anchors => unanchored (reject).
@@ -191,17 +259,8 @@ pub fn functions_anchored(cg: &CallGraph, funcs: &[(String, String)]) -> bool {
     let mut anchored_ids: BTreeSet<i32> = BTreeSet::new();
     for (fname, cpath) in funcs {
         let norm = cpath.replace('\\', "/");
-        let mut found = None;
-        for c in cg.contracts.values() {
-            let cp = c.relative_file_path.to_string_lossy().replace('\\', "/");
-            if cp == norm || cp.ends_with(&format!("/{}", norm)) || norm.ends_with(&format!("/{}", cp)) {
-                if let Some(fn_) = c.functions.iter().find(|f| &f.name == fname) {
-                    found = Some(fn_.id);
-                    break;
-                }
-            }
-        }
-        match found {
+        let matched = anchored_function_id(cg, fname, &norm);
+        match matched {
             Some(id) => { anchored_ids.insert(id); }
             None => return false,
         }
@@ -423,6 +482,86 @@ mod tests {
         assert!(functions_anchored(&cg, &[("A".into(), "a.sol".into()), ("B".into(), "a.sol".into())]));
         assert!(!functions_anchored(&cg, &[("A".into(), "a.sol".into()), ("D".into(), "b.sol".into())]));
         assert!(!functions_anchored(&cg, &[("Z".into(), "a.sol".into())]));
+    }
+
+    // Regression: audit 20261124-035252 F1. A cycle's ids are stored SORTED;
+    // the signature must follow real call edges (A->C, C->B, B->A), not the
+    // alphabetical id order (A->B->C).
+    #[test]
+    fn cycle_signature_follows_call_edges_not_sorted_ids() {
+        let mut cg = graph();
+        // A(1)->C(3), C(3)->B(2), B(2)->A(1): sorted group [1,2,3] but call order 1,3,2.
+        cg.contracts.get_mut(&1).unwrap().functions = vec![
+            func(1, "A", vec![3]), func(2, "B", vec![1]), func(3, "C", vec![2]),
+        ];
+        let g = vec![1, 2, 3];
+        let sig = cycle_signature(&cg, &g);
+        assert_eq!(sig, "A -> C -> B -> A", "signature must be the real call chain, got {}", sig);
+    }
+
+    // Regression: audit 20261124-035252 F2. A call to an id with no contract
+    // function must not create a phantom node in the packing result.
+    // Regression: gate 20261125-111824. A general SCC with a two-successor
+    // node must list ALL members in the signature, not just one simple cycle.
+    #[test]
+    fn cycle_signature_covers_whole_scc() {
+        let mut cg = graph();
+        // 1 -> 2 and 3; 2 -> 1; 3 -> 1. One SCC {1,2,3}, not a simple cycle.
+        cg.contracts.get_mut(&1).unwrap().functions = vec![
+            func(1, "A", vec![2, 3]), func(2, "B", vec![1]), func(3, "C", vec![1]),
+        ];
+        let sig = cycle_signature(&cg, &[1, 2, 3]);
+        for name in ["A", "B", "C"] {
+            assert!(sig.contains(name), "member {} dropped from signature {}", name, sig);
+        }
+    }
+
+    #[test]
+    fn unresolved_call_target_not_packed() {
+        let mut cg = graph();
+        cg.contracts.get_mut(&1).unwrap().functions = vec![func(1, "A", vec![99])];
+        let shards = pack_shards(&cg, 1000);
+        let ids: Vec<i32> = shards.iter().flat_map(|s| s.function_ids.iter().copied()).collect();
+        assert!(!ids.contains(&99), "phantom function id 99 leaked into shards: {:?}", ids);
+        assert!(ids.contains(&1));
+    }
+
+    // Regression: audit 20261124-041549 F3. Exact path equality must win over
+    // suffix matching: contract `a.sol` (cycle f,g) vs earlier `vendor/a.sol` (singleton f).
+    #[test]
+    fn anchor_exact_path_beats_suffix() {
+        let mut cg = graph();
+        cg.contracts.get_mut(&1).unwrap().relative_file_path = PathBuf::from("vendor/a.sol");
+        cg.contracts.get_mut(&1).unwrap().functions = vec![func(1, "f", vec![])];
+        cg.contracts.insert(3, Contract {
+            id: 3, name: "Exact".into(), relative_file_path: PathBuf::from("a.sol"),
+            chunk: FileChunk { loc: loc(), content: String::new() },
+            functions: vec![func(6, "f", vec![7]), func(7, "g", vec![6])],
+            description: None,
+        });
+        assert!(functions_anchored(&cg, &[("f".into(), "a.sol".into()), ("g".into(), "a.sol".into())]),
+            "exact a.sol cycle must be accepted, not matched to vendor/a.sol singleton");
+    }
+
+    // Regression: audit 20261124-041549 F4. Two same-named functions in one
+    // contract make a bare-name anchor ambiguous; must reject, not take first.
+    // Regression: gate 20261125-111957. A repo-qualified anchor path must
+    // still resolve to a contract stored with the shorter path.
+    #[test]
+    fn anchor_repo_qualified_path_matches_short_stored_path() {
+        let cg = graph(); // contract a.sol has cycle A<->B
+        assert!(functions_anchored(&cg, &[
+            ("A".into(), "contracts/a.sol".into()),
+            ("B".into(), "contracts/a.sol".into()),
+        ]), "repo-qualified anchor path must resolve to a.sol");
+    }
+
+    #[test]
+    fn duplicate_function_name_anchor_rejected() {
+        let mut cg = graph();
+        cg.contracts.get_mut(&1).unwrap().functions.push(func(5, "A", vec![]));
+        assert!(!functions_anchored(&cg, &[("A".into(), "a.sol".into())]),
+            "ambiguity must reject, not silently resolve to id 1");
     }
 
     #[test]
