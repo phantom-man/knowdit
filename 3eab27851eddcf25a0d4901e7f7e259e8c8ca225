@@ -1,0 +1,163 @@
+{
+ "type": "CLEAR",
+ "commit": "3eab27851eddcf25a0d4901e7f7e259e8c8ca225",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261125-124338",
+ "files": {
+  "crates/knowdit-audit/src/harness/solidity/runtime.rs": {
+   "sha": "3fb59a3ffc7c825e67cc04e8e9af373e3e2217906e2a0549665278dcf9ae817f",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-audit/src/sanitize.rs": {
+   "sha": "4f41ed495c9970e50effbd8bf2f350228ce29c50a8db688fbdd1447a59618973",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-audit/src/spec/mod.rs": {
+   "sha": "107bb206148a7ee5fb15e00c220e8f3ec93a6e1f61c3f50611f934fbd1488b2a",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-cg-static/src/embed.rs": {
+   "sha": "007b219528f96d3730083b0dfcea51a7b8d86357da8b7a20d384fc02890ae0e0",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-cg-static/src/fgw.rs": {
+   "sha": "a9bc03cabe6bf883c878eb918aa515f4518ef14cc64ebae626d3387ba7ff2797",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-cg-static/src/hyperbolic.rs": {
+   "sha": "d0601ddf70424f347919f51d8d0fd6939b540888b1c8cfe5a466df7b73f19981",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-cg-static/src/shard_pack.rs": {
+   "sha": "a9b11b9241b73cdf69d565c688ad780dde190f29f5a4784797f8d18ae73cd3eb",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-kg/src/agent_runner.rs": {
+   "sha": "a993dd3b9befa4261f01c814cd229f09026cb34e6fa039b995f41e6eb47ebd63",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-kg/src/agents.rs": {
+   "sha": "ef066157cc0bf29a30fa988797438aad0bde9b46044ac1a643b1c03695dc3fe3",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-kg/src/checkpoint.rs": {
+   "sha": "ddd880bbc86f093cb1abb31034efdfd12686d465bd0c727e37b66d61fbb7af0c",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-kg/src/checkpoint_journal.rs": {
+   "sha": "ed865f96dd32235fac4dcb04016914eb673cae14c2b07fdfbc9e17281cb82be6",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-kg/src/extract_tools.rs": {
+   "sha": "ceddaeaff1bfdf90326c72202306fe29dae80c9325d55229d7a713bc1b88ff8c",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-kg/src/learn.rs": {
+   "sha": "23a98374d4c38b1b36a4f3ce9e93a420e3f8c990193d2fae201a860c624ba814",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-kg/src/lib.rs": {
+   "sha": "75ea8b7be4717eda3fea8f15ffa6e53153fb3657ee5ab757c6e6f476bef0d600",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-kg/src/prompts.rs": {
+   "sha": "8e350d428e63200eada310090b625a072a1b68025c89da3d5dca6e68f5171888",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-kg/src/source_filter.rs": {
+   "sha": "3e7d5d176509588dcc994b8db6737d241ba77131aa4815e5472f4c88ff2a1c81",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit-project/src/data.rs": {
+   "sha": "dc29d6ecddd8257dc9dcd28324b22c427668949a42a6b689adc0ed8ae2fb89c0",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit/src/cmd/audit/extract_semantics.rs": {
+   "sha": "04594543f9eea4022165b79514b79d52a174e92575962976425e9d3716b4574b",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit/src/cmd/learn/learn.rs": {
+   "sha": "796c19edb57ddcf83e338281928def043c8f86a47f4b8ca5ef99993e0cbf0b3c",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  },
+  "crates/knowdit/src/cmd/solidity.rs": {
+   "sha": "09c9eee39b0b766795ec012c3b5ae58b1ea4ebf54a48d4b673154c9adf5d3785",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "CLEAR",
+   "when": "20261125-124317",
+   "artifact": ".adversary\\reviews\\gate_20261125-124317.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261125-124317.md": "model: @preset/gate-haiku-55 | provider: anthropic-messages | usage: {'prompt_tokens': 171190, 'completion_tokens': 1284, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['crates/knowdit-audit/src/harness/solidity/runtime.rs', 'crates/knowdit-audit/src/sanitize.rs', 'crates/knowdit-audit/src/spec/mod.rs', 'crates/knowdit-cg-static/src/embed.rs', 'crates/knowdit-cg-static/src/fgw.rs', 'crates/knowdit-cg-static/src/hyperbolic.rs', 'crates/knowdit-cg-static/src/shard_pack.rs', 'crates/knowdit-kg/src/agent_runner.rs', 'crates/knowdit-kg/src/agents.rs', 'crates/knowdit-kg/src/checkpoint.rs', 'crates/knowdit-kg/src/checkpoint_journal.rs', 'crates/knowdit-kg/src/extract_tools.rs', 'crates/knowdit-kg/src/learn.rs', 'crates/knowdit-kg/src/lib.rs', 'crates/knowdit-kg/src/prompts.rs', 'crates/knowdit-kg/src/source_filter.rs', 'crates/knowdit-project/src/data.rs', 'crates/knowdit/src/cmd/audit/extract_semantics.rs', 'crates/knowdit/src/cmd/learn/learn.rs', 'crates/knowdit/src/cmd/solidity.rs'] | prompt: gate/adversary-review/haiku-55@2 (langfuse) | caller: unknown\r\n\r\nThis change is almost entirely rustfmt-style reformatting plus import reordering. I checked whether any hunk alters behavior.\r\n\r\nBehavioral hunks examined:\r\n\r\n- `crates/knowdit-audit/src/harness/solidity/runtime.rs`: only the call-site line wrap and the `use llmy::agent::{LLMYError, StepResult};` reordering. The `repair_refused_step_once(e, agent, llm, &mut neutralized, *total_steps)` argument list is unchanged; the reflow does not change arguments or control flow.\r\n- `crates/knowdit-audit/src/sanitize.rs`: `changed |= self.neutralize_str(...)` is split across lines with the same expression. The `insert_value` call is reflowed with no semantic change.\r\n- `crates/knowdit-audit/src/spec/mod.rs`: `match next_step {` brace move only.\r\n- `crates/knowdit-cg-static/src/shard_pack.rs` `cycle_signature`, `anchored_function_id`, `pack_shards`, `scc`, `storage_dependencies`: reformatting only; expressions and iterator chains are identical.\r\n- `crates/knowdit-cg-static/src/embed.rs` and `fgw.rs`: the `if na == 0.0 || nb == 0.0` and other one-liners are expanded; logic is unchanged. The trailing newline at EOF is added, which is harmless.\r\n- `crates/knowdit-kg/src/agents.rs`: `use` lines reordered; `use super::*;` moved inside `mod tests`. Imports in the test module still resolve the same names.\r\n- `crates/knowdit-kg/src/learn.rs`: `let Some(cg) = cg else { return \"none\".into(); };` expanded; `filter_map`/`map` chains reformatted. `KgError::other(&format!(...))` is retained as-is.\r\n- `crates/knowdit-kg/src/checkpoint_journal.rs`, `checkpoint.rs`: reformatted only.\r\n- `crates/knowdit-kg/src/lib.rs`: `pub mod` lines reordered (`checkpoint` and `checkpoint_journal` swapped, `source_filter` moved). Module declaration order has no semantic effect in Rust.\r\n- `crates/knowdit-project/src/data.rs`: the `ProjectSpec::parse` `_ => return Err(...)` arm is rewritten as `_ => { return Err(...); }` and `drive_colon` / `pid` conditions are reflowed. The boolean expression `!pid.is_empty() && !pid.contains('\\\\') && !pid.contains('/') && !path.ends_with(':')` is unchanged.\r\n- `crates/knowdit/src/cmd/learn/learn.rs`: the `checkpoint_dir.as_ref().map(...)` closure is inlined; `CheckpointSink::new(dir, project.display_id())` is the same call.\r\n- `crates/knowdit/src/cmd/audit/extract_semantics.rs` and `cmd/solidity.rs`: reformatting of the same calls and format strings. Argument order in `categorize_and_extract_semantics_with_graph`, `storage_dependencies`, and `categorize_and_extract_from_shards` is unchanged.\r\n\r\nTest-only hunks (`#[cfg(test)]` blocks in `embed.rs`, `hyperbolic.rs`, `shard_pack.rs`, `learn.rs`, `checkpoint.rs`, `prompts.rs`, `source_filter.rs`) are reformatted with identical assertions and string literals.\r\n\r\nNo changed signature, removed symbol, or altered condition appears in the diff. The strings quoted in the existing code (for example `\"step {step_no} after neutralization: {e}\"`) are the same text before and after reflow.\r\n\r\nVERDICT: CLEAR"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261125-124317.md": {
+   "embedded": "c2c2091dc7555c5cdd6584ce630008f6d08fd457a3f19bebe96cf112fec3218e",
+   "disk": "c2c2091dc7555c5cdd6584ce630008f6d08fd457a3f19bebe96cf112fec3218e"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "dycpSAnVH0a5xSx1HbcyAJvzr3ORZ5Y8ZY4ypaO6IJXTKAT1h9QQfwGcwuXRUphtwmzUseH1+XQpkqX4QP0dBA==",
+ "mac": "f77ef50435e755d0a114c0763b66b0f49500056fad133b80a610a7185c18977f"
+}
