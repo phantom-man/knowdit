@@ -135,11 +135,18 @@ mod tests {
     fn short_name_cross_branch_collision_rejected() {
         let (cd, _) = embed_branch("d", "x");
         let (_, fm) = embed_branch("m", "x");
-        assert!(fm.distance(&cd) > CONE,
-            "cross-branch m/x must be outside d's cone (dist={})", fm.distance(&cd));
-        // own-branch still passes
+        let cross = fm.distance(&cd);
         let (cd2, fd) = embed_branch("d", "x");
-        assert!(fd.distance(&cd2) <= CONE);
+        let own = fd.distance(&cd2);
+        // Assert the geometric property directly: the cross-branch distance
+        // must exceed the own-branch distance by a clear margin. This holds
+        // regardless of the exact CONE constant and documents the invariant
+        // the gate needs (audit 20261125-114940).
+        assert!(cross > own + 0.02,
+            "cross-branch distance {} must clearly exceed own-branch {} (CONE={})", cross, own, CONE);
+        assert!(cross > CONE,
+            "cross-branch m/x must be outside d's cone (dist={}, CONE={})", cross, CONE);
+        assert!(own < CONE, "own-branch must remain inside the cone (dist={})", own);
     }
 
     #[test]

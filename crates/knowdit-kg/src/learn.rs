@@ -834,6 +834,17 @@ impl ProjectData {
                                 chunk_idx,
                                 stored.len(),
                             );
+                            // Populate the shared existing-node set from
+                            // resumed nodes too, so later fresh chunks can
+                            // reuse canonical nodes (audit 20261125-114902).
+                            {
+                                let mut g = shared_existing.lock().unwrap();
+                                for sem in &stored {
+                                    for f in &sem.functions {
+                                        g.push((f.contract.clone(), sem.name.clone()));
+                                    }
+                                }
+                            }
                             all_semantics.extend(stored);
                             chunk_idx += 1;
                             continue;
