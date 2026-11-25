@@ -2,12 +2,15 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: ['**']
   pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -18,6 +21,27 @@ jobs:
 
     - name: Set up Rust
       uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt, clippy
+
+    - name: Cache cargo registry and build
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: ${{ runner.os }}-cargo-
+
+    - name: Check formatting
+      run: cargo fmt --all -- --check
+
+    # Report lints but do not fail: the tree still has known warnings
+    # (unused import / unused variable in knowdit-kg). Tighten to `-D warnings`
+    # once those are cleaned up.
+    - name: Clippy
+      run: cargo clippy --all-targets
 
     - name: Cargo test
-      run: cargo test
+      run: cargo test --all-targets

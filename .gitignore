@@ -23,3 +23,24 @@ test-results
 eval_*
 *.sqlite3*
 .adversary/
+
+# Generated shard bundles + extraction artifacts (never commit source data)
+shard-*.sol
+manifest.json
+shards/
+shards-*/
+# Build/gate scratch from local verification runs
+*.log
+_commit_msg.txt
+_gate_ctx.txt
+_git_out_only.txt
+_hookcmd.bat
+_mk_cfg.py
+_mk_ctx.py
+_mk_msg.py
+AGENTS.md.bak-*
+
+# Local scratch and review artifacts (never pushed)
+junk/
+.colibri_reviews/
+tools/zcode_jcm_guard.ps1
