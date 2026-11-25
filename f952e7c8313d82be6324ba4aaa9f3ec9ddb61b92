@@ -1,0 +1,37 @@
+{
+ "type": "CLEAR",
+ "commit": "f952e7c8313d82be6324ba4aaa9f3ec9ddb61b92",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261125-100744",
+ "files": {
+  ".github/workflows/ci.yaml": {
+   "sha": "1bd3112ae3e6d4e3bf76f3e20bdd80ccd15d999d5cb5dccc96635771ebec01a0",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "WARN",
+   "when": "20261125-100739",
+   "artifact": ".adversary\\reviews\\gate_20261125-100739.md"
+  },
+  "D:.mcp.json": {
+   "sha": "e5dd41e863afe5eed0c14c0d58367fd33bc188b097ba89ae54b424ecd6d36622",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "WARN",
+   "when": "20261125-100739",
+   "artifact": ".adversary\\reviews\\gate_20261125-100739.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261125-100739.md": "model: @preset/gate-haiku-55 | provider: anthropic-messages | usage: {'prompt_tokens': 3466, 'completion_tokens': 1202, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['.github/workflows/ci.yaml'] | prompt: gate/adversary-review/haiku-55@2 (langfuse) | caller: unknown\r\n\r\nLOW: `.github/workflows/ci.yaml` (`on:` / `push:`, line 5): the quoted line `branches: ['**']` widens push triggers from master to every branch. Because `pull_request:` (line 6) already runs on every PR, each push to a PR branch now starts two runs, one from each trigger. The `concurrency` block with `cancel-in-progress: true` limits the waste, but the duplicate runs still consume Actions minutes. Impact is cost only, not correctness. Narrowing the push filter or dropping `pull_request` would remove the duplication.\r\n\r\nLOW: `.mcp.json` (whole-file deletion, `-  \"command\": \"C:/Users/User/source/repos/repo-memory/.venv/Scripts/python.exe\",`): the change removes a tracked MCP server configuration that anyone else cloning the repo would use. The file holds only machine-specific absolute paths and no secrets, so the impact is loss of a shared developer-tool config, not a security or data exposure. The commit does not state that the removal is intended, so the author should confirm it.\r\n\r\nVERDICT: WARN"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261125-100739.md": {
+   "embedded": "c68d5d007012290f6a1bd933b8258fc65afe0d61cdd4918bae68bb14275a2a6c",
+   "disk": "c68d5d007012290f6a1bd933b8258fc65afe0d61cdd4918bae68bb14275a2a6c"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "lRIH12EIn+kuBvMg6yuj7LXku6+cXDP/94u8zMPqhSP6YaG6/BhmHGud11umGmBce22XvhUnJPGAnJEqsLERBQ==",
+ "mac": "db093a79085bc3c5d31e9a6fd7338a461045a37fafc09c8f2b3fb0a786c5c993"
+}
