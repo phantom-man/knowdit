@@ -7,6 +7,7 @@
 //! offline. A local server is provided at tools/embed_server.py (sentence-transformers).
 
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::net::TcpStream;
 use std::time::Duration;
 
@@ -79,6 +80,171 @@ fn neural_embed(texts: &[String]) -> Option<Vec<Vec<f64>>> {
     if out.len() == texts.len() { Some(out) } else { None }
 }
 
+/// RAII owner of a managed local embedding server.
+///
+/// Opt-in with KNOWDIT_EMBED_MANAGED=1. A healthy endpoint already answering is reused
+/// (not owned); otherwise a child is spawned with KNOWDIT_EMBED_PYTHON (bootstrap
+/// default: repo-memory venv python) running tools/embed_server.py. Drop restores the
+/// previous KNOWDIT_EMBED_URL and reaps a child this guard started. Any failure
+/// degrades to a no-op guard so callers keep their hashed fallback.
+pub struct EmbedServerGuard {
+    healthy: bool,
+    child: Option<std::process::Child>,
+    previous_url: Option<String>,
+    set_url: bool,
+}
+
+impl EmbedServerGuard {
+    /// Acquire the managed lifecycle. Never panics; check `healthy()` before use.
+    pub fn acquire() -> Self {
+        let mut guard = Self {
+            healthy: false,
+            child: None,
+            previous_url: None,
+            set_url: false,
+        };
+        let opt_in = matches!(
+            std::env::var("KNOWDIT_EMBED_MANAGED").as_deref(),
+            Ok("1" | "true" | "TRUE" | "True")
+        );
+        if !opt_in {
+            return guard;
+        }
+        let host = std::env::var("KNOWDIT_EMBED_HOST").unwrap_or_else(|_| "127.0.0.1".into());
+        let port: u16 = std::env::var("KNOWDIT_EMBED_PORT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(8766);
+        let url = format!("http://{}:{}", host, port);
+        guard.previous_url = std::env::var("KNOWDIT_EMBED_URL").ok();
+        if Self::health_probe(&host, port) {
+            guard.healthy = true;
+        } else {
+            match guard.spawn(&host, port) {
+                Ok(()) => guard.healthy = true,
+                Err(()) => {
+                    guard.reap_child();
+                    return guard;
+                }
+            }
+        }
+        guard.set_url = true;
+        unsafe {
+            std::env::set_var("KNOWDIT_EMBED_URL", &url);
+        }
+        guard
+    }
+
+    /// True when a managed or pre-existing endpoint answered the health probe.
+    pub fn healthy(&self) -> bool {
+        self.healthy
+    }
+
+    /// True when this guard spawned and owns a child process.
+    pub fn owns_child(&self) -> bool {
+        self.child.is_some()
+    }
+
+    fn health_probe(host: &str, port: u16) -> bool {
+        let mut stream = match std::net::TcpStream::connect((host, port)) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        if stream
+            .set_read_timeout(Some(Duration::from_millis(500)).into())
+            .is_err()
+        {
+            return false;
+        }
+        if stream
+            .set_write_timeout(Some(Duration::from_millis(500)).into())
+            .is_err()
+        {
+            return false;
+        }
+        let payload = r#"{"model":"all-MiniLM-L6-v2","input":["ping"]}"#;
+        let req = format!(
+            "POST /v1/embeddings HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            host,
+            payload.len(),
+            payload
+        );
+        if stream.write_all(req.as_bytes()).is_err() {
+            return false;
+        }
+        let mut buf = [0u8; 4096];
+        let n = match stream.read(&mut buf) {
+            Ok(n) => n,
+            Err(_) => return false,
+        };
+        let resp = String::from_utf8_lossy(&buf[..n]);
+        resp.starts_with("HTTP/1.1 200") || resp.starts_with("HTTP/1.0 200")
+    }
+
+    fn spawn(&mut self, host: &str, port: u16) -> Result<(), ()> {
+        // embed_server.py binds a fixed port; a different configured port can never
+        // become healthy. Degrade immediately instead of waiting the full startup timeout.
+        if port != 8766 && std::env::var("KNOWDIT_REPO_ROOT").is_err() { return Err(()); }
+        if !cfg!(windows) && std::env::var("KNOWDIT_EMBED_PYTHON").is_err() {
+            return Err(());
+        }
+        let python = std::env::var("KNOWDIT_EMBED_PYTHON").unwrap_or_else(|_| {
+            r"C:\Users\User\source\repos\repo-memory\.venv\Scripts\python.exe".into()
+        });
+        let root = std::env::var("KNOWDIT_REPO_ROOT")
+            .unwrap_or_else(|_| r"C:\Users\User\source\repos\knowdit".into());
+        let server = PathBuf::from(root).join("tools").join("embed_server.py");
+        if !std::path::Path::new(&python).is_file() || !server.is_file() {
+            return Err(());
+        }
+        let mut cmd = std::process::Command::new(python);
+        cmd.arg(&server)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        let _ = host;
+        let child = cmd.spawn().map_err(|_| ())?;
+        self.child = Some(child);
+        let timeout: u64 = std::env::var("KNOWDIT_EMBED_STARTUP_MS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(30_000);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout);
+        while std::time::Instant::now() < deadline {
+            if Self::health_probe(host, port) {
+                return Ok(());
+            }
+            if self
+                .child
+                .as_mut()
+                .map_or(true, |c| c.try_wait().ok().flatten().is_some())
+            {
+                return Err(());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        Err(())
+    }
+
+    fn reap_child(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+impl Drop for EmbedServerGuard {
+    fn drop(&mut self) {
+        if self.set_url {
+            match self.previous_url.take() {
+                Some(v) => unsafe { std::env::set_var("KNOWDIT_EMBED_URL", v) },
+                None => unsafe { std::env::remove_var("KNOWDIT_EMBED_URL") },
+            }
+        }
+        self.reap_child();
+    }
+}
+
 /// Embed texts: neural backend when reachable, else deterministic fallback.
 pub fn embed_texts(texts: &[String]) -> Vec<Vec<f64>> {
     if let Some(v) = neural_embed(texts) { return v; }
@@ -88,6 +254,8 @@ pub fn embed_texts(texts: &[String]) -> Vec<Vec<f64>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn cosine_identity_and_orthogonal() {
@@ -106,6 +274,7 @@ mod tests {
 
     #[test]
     fn embed_falls_back_offline() {
+        let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // Force an unreachable endpoint so the fallback path is exercised deterministically.
         unsafe { std::env::set_var("KNOWDIT_EMBED_URL", "http://127.0.0.1:9"); }
         let v = embed_texts(&["alpha".into(), "beta".into()]);
@@ -116,14 +285,250 @@ mod tests {
 
     #[test]
     fn https_rejected_falls_back() {
+        let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         unsafe { std::env::set_var("KNOWDIT_EMBED_URL", "https://example.com:443"); }
         let v = embed_texts(&["x".into()]);
         assert_eq!(v[0].len(), 64); // no cleartext https; deterministic fallback
         unsafe { std::env::remove_var("KNOWDIT_EMBED_URL"); }
     }
 
+    // --- managed lifecycle (RED-first) -------------------------------------
+
+    fn test_env(key: &str, value: &str) {
+        unsafe {
+            std::env::set_var(key, value);
+        }
+    }
+    fn clear_test_env(key: &str) {
+        unsafe {
+            std::env::remove_var(key);
+        }
+    }
+
+    /// Tiny stub: answers every POST with a well-formed embeddings response.
+    /// Nonblocking accept loop so Drop can stop it without a live connection.
+    struct StubServer {
+        stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        thread: Option<std::thread::JoinHandle<()>>,
+    }
+    impl StubServer {
+        fn start() -> Self {
+            let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("bind stub");
+            listener.set_nonblocking(true).expect("nonblocking stub");
+            let port = listener.local_addr().expect("addr").port();
+            let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let stop2 = stop.clone();
+            test_env("KNOWDIT_EMBED_MANAGED", "1");
+            test_env("KNOWDIT_EMBED_HOST", "127.0.0.1");
+            test_env("KNOWDIT_EMBED_PORT", &port.to_string());
+            let thread = std::thread::spawn(move || {
+                while !stop2.load(std::sync::atomic::Ordering::Relaxed) {
+                    match listener.accept() {
+                        Ok((mut stream, _)) => {
+                            let mut buf = [0u8; 4096];
+                            let _ = stream.read(&mut buf);
+                            let body = r#"{"data":[{"embedding":[1.0,0.0]}]}"#;
+                            let resp = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                body.len(),
+                                body
+                            );
+                            let _ = stream.write_all(resp.as_bytes());
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
+            Self {
+                stop,
+                thread: Some(thread),
+            }
+        }
+    }
+    impl Drop for StubServer {
+        fn drop(&mut self) {
+            self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+            if let Some(t) = self.thread.take() {
+                let _ = t.join();
+            }
+        }
+    }
+
+    #[test]
+    fn managed_guard_reuses_healthy_server_and_sets_url() {
+        let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("KNOWDIT_EMBED_URL").ok();
+        test_env("KNOWDIT_EMBED_HOST", "127.0.0.1");
+        let _stub = StubServer::start();
+        let guard = EmbedServerGuard::acquire();
+        assert!(
+            guard.healthy(),
+            "guard must detect the already-running stub server"
+        );
+        assert!(
+            !guard.owns_child(),
+            "a pre-existing server must not be spawned or killed"
+        );
+        assert!(
+            std::env::var("KNOWDIT_EMBED_URL").is_ok(),
+            "guard must export KNOWDIT_EMBED_URL"
+        );
+        drop(guard);
+        match previous {
+            Some(v) => assert_eq!(std::env::var("KNOWDIT_EMBED_URL").ok(), Some(v)),
+            None => assert!(std::env::var("KNOWDIT_EMBED_URL").is_err()),
+        }
+        clear_test_env("KNOWDIT_EMBED_MANAGED");
+        clear_test_env("KNOWDIT_EMBED_PORT");
+        clear_test_env("KNOWDIT_EMBED_HOST");
+    }
+
+    #[test]
+    fn managed_guard_spawns_child_and_drop_reaps_it() {
+        let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("KNOWDIT_EMBED_URL").ok();
+        let dir = std::env::temp_dir().join("knowdit_embed_guard_spawn");
+        std::fs::create_dir_all(dir.join("tools")).expect("test dir");
+        let script = dir.join("tools").join("embed_server.py");
+        std::fs::write(&script, r##"import http.server, json, socketserver
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        n=int(self.headers.get('Content-Length',0)); self.rfile.read(n)
+        body=b'{"data":[{"embedding":[1.0]}]}'
+        self.send_response(200); self.send_header('Content-Length',str(len(body))); self.end_headers(); self.wfile.write(body)
+    def log_message(self,*a): pass
+socketserver.TCPServer(('127.0.0.1', 46029), H).serve_forever()
+"##).expect("test stub server");
+        test_env("KNOWDIT_EMBED_MANAGED", "1");
+        test_env("KNOWDIT_EMBED_HOST", "127.0.0.1");
+        test_env("KNOWDIT_EMBED_PORT", "46029");
+        test_env("KNOWDIT_EMBED_STARTUP_MS", "5000");
+        test_env(
+            "KNOWDIT_EMBED_PYTHON",
+            r"C:\Users\User\source\repos\repo-memory\.venv\Scripts\python.exe",
+        );
+        test_env("KNOWDIT_REPO_ROOT", &dir.to_string_lossy());
+        let guard = EmbedServerGuard::acquire();
+        assert!(guard.healthy(), "spawned stub must become healthy");
+        assert!(guard.owns_child(), "guard must own the spawned child");
+        drop(guard);
+        match previous {
+            Some(v) => assert_eq!(std::env::var("KNOWDIT_EMBED_URL").ok(), Some(v)),
+            None => assert!(std::env::var("KNOWDIT_EMBED_URL").is_err()),
+        }
+        clear_test_env("KNOWDIT_EMBED_MANAGED");
+        clear_test_env("KNOWDIT_EMBED_PORT");
+        clear_test_env("KNOWDIT_EMBED_HOST");
+        clear_test_env("KNOWDIT_EMBED_STARTUP_MS");
+        clear_test_env("KNOWDIT_EMBED_PYTHON");
+        clear_test_env("KNOWDIT_REPO_ROOT");
+    }
+
+    #[test]
+    fn managed_guard_falls_back_when_start_fails() {
+        let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        test_env("KNOWDIT_EMBED_MANAGED", "1");
+        test_env("KNOWDIT_EMBED_PYTHON", "C:/definitely/not/a/python.exe");
+        test_env("KNOWDIT_EMBED_PORT", "9");
+        let guard = EmbedServerGuard::acquire();
+        assert!(
+            !guard.healthy(),
+            "failed start must degrade, not claim health"
+        );
+        assert!(!guard.owns_child());
+        let v = embed_texts(&["alpha".into()]);
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].len(), 64, "hashed fallback must still work");
+        clear_test_env("KNOWDIT_EMBED_MANAGED");
+        clear_test_env("KNOWDIT_EMBED_PYTHON");
+        clear_test_env("KNOWDIT_EMBED_PORT");
+    }
+
+    #[test]
+    fn unsupported_nondefault_port_degrades_without_stall() {
+        let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        test_env("KNOWDIT_EMBED_MANAGED", "1");
+        test_env("KNOWDIT_EMBED_HOST", "127.0.0.1");
+        test_env("KNOWDIT_EMBED_PORT", "9999");
+        test_env("KNOWDIT_EMBED_PYTHON", "C:/definitely/not/a/python.exe");
+        test_env("KNOWDIT_EMBED_STARTUP_MS", "1000");
+        let start = std::time::Instant::now();
+        let guard = EmbedServerGuard::acquire();
+        assert!(!guard.healthy());
+        assert!(start.elapsed() < std::time::Duration::from_millis(5000),
+            "unsupported port must degrade without the full startup stall (elapsed={:?})", start.elapsed());
+        clear_test_env("KNOWDIT_EMBED_MANAGED");
+        clear_test_env("KNOWDIT_EMBED_HOST");
+        clear_test_env("KNOWDIT_EMBED_PORT");
+        clear_test_env("KNOWDIT_EMBED_PYTHON");
+        clear_test_env("KNOWDIT_EMBED_STARTUP_MS");
+    }
+
+    #[test]
+    fn no_opt_in_guard_preserves_external_url() {
+        let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        const EXTERNAL: &str = "http://example.invalid:4321";
+        test_env("KNOWDIT_EMBED_URL", EXTERNAL);
+        clear_test_env("KNOWDIT_EMBED_MANAGED");
+        {
+            let guard = EmbedServerGuard::acquire();
+            assert!(!guard.healthy());
+        }
+        assert_eq!(std::env::var("KNOWDIT_EMBED_URL").ok().as_deref(), Some(EXTERNAL));
+        clear_test_env("KNOWDIT_EMBED_URL");
+    }
+
+    #[test]
+    fn failed_start_does_not_clobber_external_url() {
+        let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        const EXTERNAL: &str = "http://example.invalid:1234";
+        test_env("KNOWDIT_EMBED_URL", EXTERNAL);
+        test_env("KNOWDIT_EMBED_MANAGED", "1");
+        test_env("KNOWDIT_EMBED_PYTHON", "C:/definitely/not/a/python.exe");
+        test_env("KNOWDIT_EMBED_PORT", "9");
+        {
+            let guard = EmbedServerGuard::acquire();
+            assert!(!guard.healthy());
+        }
+        assert_eq!(std::env::var("KNOWDIT_EMBED_URL").ok().as_deref(), Some(EXTERNAL));
+        clear_test_env("KNOWDIT_EMBED_URL");
+        clear_test_env("KNOWDIT_EMBED_MANAGED");
+        clear_test_env("KNOWDIT_EMBED_PYTHON");
+        clear_test_env("KNOWDIT_EMBED_PORT");
+    }
+
+    #[test]
+    fn managed_guard_drop_always_releases_env_and_child() {
+        let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var("KNOWDIT_EMBED_URL").ok();
+        test_env("KNOWDIT_EMBED_MANAGED", "1");
+        test_env("KNOWDIT_EMBED_PYTHON", "C:/definitely/not/a/python.exe");
+        test_env("KNOWDIT_EMBED_PORT", "9");
+        {
+            let guard = EmbedServerGuard::acquire();
+            // A failed start leaves no dirty env (spec: no-op guard).
+            if guard.healthy() {
+                assert!(std::env::var("KNOWDIT_EMBED_URL").is_ok());
+            } else {
+                assert_eq!(std::env::var("KNOWDIT_EMBED_URL").ok(), previous);
+            }
+            drop(guard);
+        }
+        match previous {
+            Some(v) => assert_eq!(std::env::var("KNOWDIT_EMBED_URL").ok(), Some(v)),
+            None => assert!(std::env::var("KNOWDIT_EMBED_URL").is_err()),
+        }
+        clear_test_env("KNOWDIT_EMBED_MANAGED");
+        clear_test_env("KNOWDIT_EMBED_PYTHON");
+        clear_test_env("KNOWDIT_EMBED_PORT");
+    }
+
     #[test]
     fn neural_backend_when_server_up() {
+        let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // Only meaningful with tools/embed_server.py running; skip gracefully otherwise.
         if std::env::var("KNOWDIT_EMBED_URL").is_err() {
             // default 8766; probe via a tiny TCP connect

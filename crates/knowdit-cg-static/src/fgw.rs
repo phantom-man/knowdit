@@ -97,6 +97,8 @@ pub fn link_semantics_findings_neural(
 ) -> Vec<usize> {
     let sn: Vec<String> = sem.iter().map(|(n, _)| n.clone()).collect();
     let fn_: Vec<String> = find.iter().map(|(n, _)| n.clone()).collect();
+    // Opt-in managed server: acquired here so its lifetime covers both embed calls.
+    let _embed_guard = crate::embed::EmbedServerGuard::acquire();
     let se = crate::embed::embed_texts(&sn);
     let fe = crate::embed::embed_texts(&fn_);
     let feat: Vec<Vec<f64>> = se.iter().map(|s| fe.iter().map(|f| 1.0 - crate::embed::cosine(s, f)).collect()).collect();
