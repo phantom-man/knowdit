@@ -37,6 +37,26 @@ pub struct ExtractBackings {
     pub existing_nodes: Vec<(String, String)>,
 }
 
+/// Hash input that binds a checkpointed chunk to the PROMPT that produced it,
+/// not only to its source text (audit 20261124-041549/042814/072027). A cached
+/// payload is valid only when categories, call-graph gating and graph features
+/// are unchanged; otherwise stale semantics from a weaker prompt are reused.
+fn resume_signature_hash(chunk: &str, suffix: &str, gating: &str) -> String {
+    crate::checkpoint::chunk_hash(&format!("{}\x1f{}\x1f{}", chunk, suffix, gating))
+}
+
+/// Stable string for call-graph gating inputs at extraction time.
+fn call_graph_gating(cg: Option<&knowdit_repo_model::cg::CallGraph>, ids: Option<&[i32]>) -> String {
+    let Some(cg) = cg else { return "none".into(); };
+    let cycles = knowdit_cg_static::shard_pack::cycle_groups(cg);
+    let feats = knowdit_cg_static::shard_pack::graph_features(cg, ids);
+    let mut sig = String::new();
+    for g in &cycles { sig.push_str(&knowdit_cg_static::shard_pack::cycle_signature(cg, g)); sig.push('\n'); }
+    sig.push_str(&feats);
+    sig
+}
+
+
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct InProjectLinkEntry {
@@ -654,7 +674,11 @@ impl ProjectData {
             let idx = entry["index"].as_u64().unwrap_or(0) as u32;
             let file = entry["file"].as_str().unwrap_or("");
             let content = std::fs::read_to_string(shard_dir.join(file))?;
-            let hash = crate::checkpoint::chunk_hash(&content);
+            let ids: Vec<i32> = entry["function_ids"].as_array()
+                .map(|a| a.iter().filter_map(|v| v.as_i64().map(|x| x as i32)).collect())
+                .unwrap_or_default();
+            let gating = call_graph_gating(call_graph, Some(&ids));
+            let hash = resume_signature_hash(&content, &user_suffix, &gating);
             if let Some((stored_hash, payload)) = checkpointed.get(&idx) {
                 if *stored_hash == hash {
                     if let Ok(stored) = serde_json::from_slice::<Vec<ExtractedSemantic>>(payload) {
@@ -667,7 +691,6 @@ impl ProjectData {
             }
             let mut user_prompt = format!("{}{}", content, user_suffix);
             if let Some(cg) = call_graph {
-                let ids: Vec<i32> = entry["function_ids"].as_array().map(|a| a.iter().filter_map(|v| v.as_i64().map(|x| x as i32)).collect()).unwrap_or_default();
                 user_prompt.push_str(&shard_pack::graph_features(cg, Some(&ids)));
             }
             let extractor = SemanticChunkExtractor {
@@ -717,7 +740,14 @@ impl ProjectData {
         }
         let rank = |p: &String| -> usize {
             let n = p.replace('\\', "/");
-            order.iter().position(|o| n.ends_with(o) || o.ends_with(&n)).unwrap_or(usize::MAX)
+            // Exact match must win: the old suffix match let an earlier short
+            // entry "a.sol" rank a section actually belonging to "vendor/a.sol"
+            // (audit 20261124-041549 F7). Fall back to slash-bounded suffixes.
+            if let Some(i) = order.iter().position(|o| o == &n) { return i; }
+            order.iter().position(|o| {
+                (!o.is_empty() && n.ends_with(&format!("/{}", o)))
+                    || (!n.is_empty() && o.ends_with(&format!("/{}", n)))
+            }).unwrap_or(usize::MAX)
         };
         sections.sort_by_key(|(p, _)| rank(p));
         let mut out = header;
@@ -781,9 +811,13 @@ impl ProjectData {
         }
 
         let mut all_semantics = Vec::new();
+        let shared_existing = std::sync::Arc::new(std::sync::Mutex::new(
+            backings.map(|b| b.existing_nodes.clone()).unwrap_or_default()));
         let mut chunk_idx = 0usize;
         while let Some(chunk) = cursor.next_chunk(chunk_budget) {
-            let hash = crate::checkpoint::chunk_hash(&chunk);
+            // Bind resume to the full prompt context, not just source text.
+            let gating = call_graph_gating(call_graph, None);
+            let hash = resume_signature_hash(&chunk, &user_suffix, &gating);
 
             // Resume from checkpoint when the hash matches (same source
             // text, same budget => same deterministic chunk boundaries)
@@ -848,7 +882,9 @@ impl ProjectData {
                 label: chunk_label,
                 call_graph: call_graph.map(|c| std::sync::Arc::new(c.clone())), 
                 storage_deps: std::sync::Arc::new(backings.map(|b| b.storage_deps.clone()).unwrap_or_default()),
-                existing_nodes: std::sync::Arc::new(std::sync::Mutex::new(backings.map(|b| b.existing_nodes.clone()).unwrap_or_default())),
+                // Share emitted nodes across chunks so LookupKgTool can find
+                // canonical nodes from earlier chunks (audit 20261124-072027 F8).
+                existing_nodes: shared_existing.clone(),
             };
             let chunk_semantics = extractor.run().await?;
             tracing::info!(
@@ -881,6 +917,12 @@ impl ProjectData {
                 }
             }
 
+            {
+                let mut g = shared_existing.lock().unwrap();
+                for sem in &chunk_semantics {
+                    for f in &sem.functions { g.push((f.contract.clone(), sem.name.clone())); }
+                }
+            }
             all_semantics.extend(chunk_semantics);
             chunk_idx += 1;
         }
@@ -1629,5 +1671,33 @@ mod readme_order_tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+
+#[cfg(test)]
+mod resume_tests {
+    use super::*;
+
+    // F5/F6: a checkpoint hash must change when the prompt suffix or graph
+    // gating changes, even if the chunk text is identical.
+    #[test]
+    fn resume_hash_binds_prompt_and_gating() {
+        let chunk = "same source text";
+        let base = resume_signature_hash(chunk, "suffix-A", "gate-A");
+        assert_eq!(base, resume_signature_hash(chunk, "suffix-A", "gate-A"));
+        assert_ne!(base, resume_signature_hash(chunk, "suffix-B", "gate-A"),
+            "different categories/suffix must invalidate the checkpoint");
+        assert_ne!(base, resume_signature_hash(chunk, "suffix-A", "gate-B"),
+            "different call-graph gating must invalidate the checkpoint");
+        assert_ne!(base, resume_signature_hash("different text", "suffix-A", "gate-A"));
+    }
+
+    // F8 smoke: call_graph_gating is deterministic and distinguishes none/some.
+    #[test]
+    fn gating_signature_stable() {
+        let a = call_graph_gating(None, None);
+        assert_eq!(a, "none");
+        assert_eq!(call_graph_gating(None, None), a);
     }
 }
