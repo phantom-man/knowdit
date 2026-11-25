@@ -375,16 +375,32 @@ pub struct ProjectSpec {
 
 impl ProjectSpec {
     pub fn parse(spec: &str) -> Result<Self> {
-        let parts: Vec<&str> = spec.splitn(3, ':').collect();
-        let (name, root, platform_id) = match parts.as_slice() {
-            [name, path] => (*name, *path, None),
-            [name, path, pid] => (*name, *path, Some(*pid)),
-            _ => {
-                return Err(eyre!(
-                    "expected `name:path` or `name:path:platform_id`, got `{}`",
-                    spec
-                ));
+        // Split on ':' but NEVER treat a Windows drive colon (`C:\repo`) as
+        // a name/path or path/platform separator. The old `splitn(3, ':')`
+        // truncated `p:C:\repo` to path "C" on Windows.
+        let (name, tail) = match spec.split_once(':') {
+            Some((n, t)) if !n.trim().is_empty() => (n, t),
+            _ => return Err(eyre!(
+                "expected `name:path` or `name:path:platform_id`, got `{}`", spec)),
+        };
+        let drive_colon = |v: &str| v.len() >= 2
+            && v.as_bytes()[1] == b':'
+            && v[2..].starts_with(|c| c == '\\' || c == '/');
+        // Optional platform id is the last `:suffix` where the suffix is a
+        // single token and the colon is not a drive colon.
+        let (root, platform_id) = if let Some(pos) = tail.rfind(':') {
+            let (path, pid) = (&tail[..pos], &tail[pos + 1..]);
+            // `path` may itself be `C:\...` (drive_colon true) - that is
+            // fine, the LAST colon is still the platform-id separator as
+            // long as the suffix is a single token.
+            if !pid.is_empty() && !pid.contains('\\') && !pid.contains('/')
+                && !path.ends_with(':') {
+                (path, Some(pid))
+            } else {
+                (tail, None)
             }
+        } else {
+            (tail, None)
         };
         if name.trim().is_empty() || root.trim().is_empty() {
             return Err(eyre!("project name and path must be non-empty: `{}`", spec));
@@ -513,6 +529,23 @@ mod tests {
         assert!(ProjectSpec::parse(":/x").is_err());
     }
 
+    // Regression: a Windows drive colon must not be parsed as the
+    // name/path or path/platform separator.
+    #[test]
+    fn project_spec_parse_windows_drive_path() {
+        let p = ProjectSpec::parse(r"p:C:\repo\src").unwrap();
+        assert_eq!(p.name, "p");
+        assert_eq!(p.platform_id, None);
+        assert!(p.root.to_string_lossy().contains("repo"));
+    }
+    #[test]
+    fn project_spec_parse_windows_drive_with_platform_id() {
+        let p = ProjectSpec::parse(r"p:C:\repo\src:c4-1").unwrap();
+        assert_eq!(p.name, "p");
+        assert_eq!(p.platform_id.as_deref(), Some("c4-1"));
+        assert!(p.root.to_string_lossy().contains("repo"));
+    }
+
     #[test]
     fn project_spec_parse_expands_leading_tilde() {
         // Shells don't tilde-expand inside `name:~/path` (the `~` is
@@ -520,7 +553,8 @@ mod tests {
         // `shellexpand::tilde`. Read the test environment's current
         // `$HOME` rather than mutating it — `set_var` races between
         // concurrent tests.
-        let home = std::env::var("HOME").expect("HOME should be set in the test environment");
+        let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))
+            .expect("HOME or USERPROFILE should be set in the test environment");
         let p = ProjectSpec::parse("foo:~/megaeth/normal-account").unwrap();
         assert_eq!(p.root, PathBuf::from(home).join("megaeth/normal-account"));
     }
