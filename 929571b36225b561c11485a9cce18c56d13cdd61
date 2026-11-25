@@ -1,0 +1,37 @@
+{
+ "type": "CLEAR",
+ "commit": "929571b36225b561c11485a9cce18c56d13cdd61",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261125-114714",
+ "files": {
+  "crates/knowdit-cg-static/src/hyperbolic.rs": {
+   "sha": "bf1d1892a4d435e6e8c79391817ab203a387c1497068023d353dac281940c761",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261125-114709",
+   "artifact": ".adversary\\reviews\\gate_20261125-114709.md"
+  },
+  "crates/knowdit-kg/src/extract_tools.rs": {
+   "sha": "60b58ca2f7ffdb6b6bc952d8a421df883d8c29994af089183f4b7978277cfea6",
+   "model": "@preset/gate-gemini-25-flash",
+   "verdict": "CLEAR",
+   "when": "20261125-114709",
+   "artifact": ".adversary\\reviews\\gate_20261125-114709.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261125-114709.md": "model: @preset/gate-gemini-25-flash | provider: anthropic-messages | usage: {'prompt_tokens': 0, 'completion_tokens': 1892, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['crates/knowdit-cg-static/src/hyperbolic.rs', 'crates/knowdit-kg/src/extract_tools.rs'] | prompt: gate/adversary-review/gemini-25-flash@1 (langfuse) | caller: unknown\r\n\r\nVERDICT: CLEAR"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261125-114709.md": {
+   "embedded": "081779b4ace19c9ac90bb97bf397384f8723222e715a02a5ef1f177787e3fd84",
+   "disk": "081779b4ace19c9ac90bb97bf397384f8723222e715a02a5ef1f177787e3fd84"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "sxooj+AD5xLqhZn100KeBHSKGsmLcYOUWWKJDb3+vM2jomOJEC4cwi1NQSz0R3bsl4SlUrp2EFvRnY08SVovBA==",
+ "mac": "26c3327d492baf18604ffe57da1b5c726bb60ec237702a96299683963031e308"
+}
