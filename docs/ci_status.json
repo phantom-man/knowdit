@@ -1,0 +1,6 @@
+{
+  "verified": "2026-11-25",
+  "last_success_run": 45690114615,
+  "last_success_sha": "5c9feb0",
+  "note": "Actions was off on the fork at first; workflow_dispatch used to verify. Push triggers to be confirmed."
+}
