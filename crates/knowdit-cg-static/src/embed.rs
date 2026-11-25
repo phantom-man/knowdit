@@ -52,7 +52,22 @@ fn neural_embed(texts: &[String]) -> Option<Vec<Vec<f64>>> {
     let (host, port) = parse_host_port(&url)?;
     let body = serde_json::json!({ "model": model, "input": texts });
     let payload = body.to_string();
-    let mut stream = TcpStream::connect((host.as_str(), port)).ok()?;
+    // A routable but black-holed host can stall in connect() for the OS
+    // timeout; set a bounded connect deadline so the documented offline
+    // fallback is reached promptly (audit 20261124-054841 F10).
+    let addr = (host.as_str(), port);
+    // Try EVERY resolved address (localhost may yield ::1 before the IPv4
+    // loopback where the server actually listens); take the first that
+    // connects within the bounded timeout (gate 20261125-112814).
+    let resolved = std::net::ToSocketAddrs::to_socket_addrs(&addr).ok()?;
+    let mut stream = None;
+    for sa in resolved {
+        if let Ok(s) = TcpStream::connect_timeout(&sa, Duration::from_secs(2)) {
+            stream = Some(s);
+            break;
+        }
+    }
+    let mut stream = stream?;
     stream.set_read_timeout(Some(Duration::from_secs(10))).ok()?;
     stream.set_write_timeout(Some(Duration::from_secs(10))).ok()?;
     let mut req = format!(
@@ -72,12 +87,28 @@ fn neural_embed(texts: &[String]) -> Option<Vec<Vec<f64>>> {
     let body = resp.split("\r\n\r\n").nth(1)?;
     let v: serde_json::Value = serde_json::from_str(body).ok()?;
     let data = v.get("data")?.as_array()?;
-    let mut out = Vec::new();
+    let mut out: Vec<Vec<f64>> = Vec::new();
     for d in data {
         let emb = d.get("embedding")?.as_array()?;
-        out.push(emb.iter().filter_map(|x| x.as_f64()).collect());
+        // Strict: every component must be a finite number. filter_map dropping
+        // nulls/strings would accept a malformed vector and feed it to cosine
+        // (audit 20261124-054841 F11).
+        if emb.is_empty() { return None; }
+        let mut v = Vec::with_capacity(emb.len());
+        for x in emb {
+            let n = x.as_f64()?;
+            if !n.is_finite() { return None; }
+            v.push(n);
+        }
+        out.push(v);
     }
-    if out.len() == texts.len() { Some(out) } else { None }
+    if out.len() != texts.len() { return None; }
+    if out.is_empty() { return Some(out); } // empty input: no vectors to validate
+    // All vectors must share one dimension, otherwise cosine compares zipped
+    // prefixes from unrelated spaces.
+    let dim = out[0].len();
+    if out.iter().any(|v| v.len() != dim) { return None; }
+    Some(out)
 }
 
 /// RAII owner of a managed local embedding server.
@@ -283,6 +314,47 @@ mod tests {
         unsafe { std::env::remove_var("KNOWDIT_EMBED_URL"); }
     }
 
+    // Regression: audit 20261124-054841 F11. A response with one embedding
+    // per input but a non-numeric component must fall back, not be accepted.
+    // Regression: gate 20261125-112814. Empty input must not panic in neural_embed.
+    #[test]
+    fn empty_input_no_panic() {
+        let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var("KNOWDIT_EMBED_URL").ok();
+        test_env("KNOWDIT_EMBED_URL", "http://localhost:9");
+        let v = embed_texts(&[]);
+        assert!(v.is_empty());
+        match prev { Some(x) => test_env("KNOWDIT_EMBED_URL", &x), None => clear_test_env("KNOWDIT_EMBED_URL") }
+    }
+
+    #[test]
+    fn malformed_vector_component_falls_back() {
+        let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let listener = std::net::TcpListener::bind(("localhost", 0)).expect("bind");
+        let port = listener.local_addr().unwrap().port();
+        let prev = std::env::var("KNOWDIT_EMBED_URL").ok();
+        test_env("KNOWDIT_EMBED_URL", &format!("http://localhost:{}", port));
+        let h = std::thread::spawn(move || {
+            // nonblocking accept, one request
+            listener.set_nonblocking(true).ok();
+            for _ in 0..200 {
+                if let Ok((mut st, _)) = listener.accept() {
+                    let mut buf = [0u8; 4096];
+                    let _ = st.read(&mut buf);
+                    let body = r#"{"data":[{"embedding":[1.0,null,3.0]}]}"#;
+                    let resp = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+                    let _ = st.write_all(resp.as_bytes());
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        });
+        let v = embed_texts(&["alpha".into()]);
+        h.join().ok();
+        assert_eq!(v[0].len(), 64, "malformed neural vector must fall back to 64-dim hash");
+        match prev { Some(x) => test_env("KNOWDIT_EMBED_URL", &x), None => clear_test_env("KNOWDIT_EMBED_URL") }
+    }
+
     #[test]
     fn https_rejected_falls_back() {
         let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -430,9 +502,15 @@ socketserver.TCPServer(('127.0.0.1', 46029), H).serve_forever()
     #[test]
     fn managed_guard_falls_back_when_start_fails() {
         let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let previous_url = std::env::var("KNOWDIT_EMBED_URL").ok();
         test_env("KNOWDIT_EMBED_MANAGED", "1");
         test_env("KNOWDIT_EMBED_PYTHON", "C:/definitely/not/a/python.exe");
         test_env("KNOWDIT_EMBED_PORT", "9");
+        // A failed managed guard does NOT set KNOWDIT_EMBED_URL, so the
+        // ambient URL (e.g. a real server on 8766) would leak into the
+        // embed_texts fallback assertion. Pin it to an unreachable endpoint
+        // for this test (audit 20261124-054841 F12).
+        test_env("KNOWDIT_EMBED_URL", "http://[IP_ADDRESS]:9");
         let guard = EmbedServerGuard::acquire();
         assert!(
             !guard.healthy(),
@@ -442,6 +520,10 @@ socketserver.TCPServer(('127.0.0.1', 46029), H).serve_forever()
         let v = embed_texts(&["alpha".into()]);
         assert_eq!(v.len(), 1);
         assert_eq!(v[0].len(), 64, "hashed fallback must still work");
+        match previous_url {
+            Some(v) => test_env("KNOWDIT_EMBED_URL", &v),
+            None => clear_test_env("KNOWDIT_EMBED_URL"),
+        }
         clear_test_env("KNOWDIT_EMBED_MANAGED");
         clear_test_env("KNOWDIT_EMBED_PYTHON");
         clear_test_env("KNOWDIT_EMBED_PORT");

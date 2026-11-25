@@ -101,6 +101,17 @@ pub fn link_semantics_findings_neural(
     let _embed_guard = crate::embed::EmbedServerGuard::acquire();
     let se = crate::embed::embed_texts(&sn);
     let fe = crate::embed::embed_texts(&fn_);
+    // The two embed_texts calls can land on different backends (e.g. first
+    // succeeds neural 384-d, second falls back hashed 64-d). cosine zips by
+    // prefix, so cross-space comparison is silently wrong. Require a shared
+    // dimension; on mismatch fall back to the lexical linker, which never
+    // mixes spaces (audit 20261124-054841 F13).
+    let dim = se.first().map(|v| v.len());
+    if dim.is_none() || se.is_empty() || fe.is_empty()
+        || se.iter().any(|v| v.len() != dim.unwrap())
+        || fe.iter().any(|v| v.len() != dim.unwrap()) {
+        return link_semantics_findings(sem, find, alpha);
+    }
     let feat: Vec<Vec<f64>> = se.iter().map(|s| fe.iter().map(|f| 1.0 - crate::embed::cosine(s, f)).collect()).collect();
     let sjac = |a: &Vec<i32>, b: &Vec<i32>| -> f64 {
         let sa: std::collections::BTreeSet<i32> = a.iter().copied().collect();
@@ -140,6 +151,18 @@ mod tests {
         assert!(p[0][0] > p[0][1]);
         assert!(p[1][1] > p[1][0]);
         assert_eq!(best_links(&p), vec![0, 1]);
+    }
+
+    // Regression: audit 20261124-054841 F13. A mixed-backend dimension
+    // mismatch must fall back to the lexical linker, not compare zipped
+    // prefixes of unrelated vector spaces.
+    #[test]
+    fn neural_linker_handles_backend_dimension_mismatch() {
+        let sem = vec![("reward accounting".into(), vec![1, 2])];
+        let find = vec![("reward accounting bug".into(), vec![1, 2])];
+        let links = link_semantics_findings_neural(&sem, &find, 0.5);
+        assert_eq!(links.len(), sem.len());
+        assert!(links.iter().all(|&j| j < find.len()));
     }
 
     #[test]
