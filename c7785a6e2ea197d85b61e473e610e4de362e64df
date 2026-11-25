@@ -1,0 +1,44 @@
+{
+ "type": "CLEAR",
+ "commit": "c7785a6e2ea197d85b61e473e610e4de362e64df",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261125-034422",
+ "files": {
+  "crates/knowdit-cg-static/src/embed.rs": {
+   "sha": "72869179258fe8f3581643b7cfcbd089fa17d317a4d811c4db588addc8d58b86",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "WARN",
+   "when": "20261125-034330",
+   "artifact": ".adversary\\reviews\\gate_20261125-034330.md"
+  },
+  "crates/knowdit-cg-static/src/fgw.rs": {
+   "sha": "d462d468d8f7a0fd63dcef711432b3b19ac0f006f4409f5eba4de626aa9102e3",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "WARN",
+   "when": "20261125-034330",
+   "artifact": ".adversary\\reviews\\gate_20261125-034330.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261125-034330.md": "model: @preset/gate-haiku-55 | provider: anthropic-messages | usage: {'prompt_tokens': 25313, 'completion_tokens': 4051, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['crates/knowdit-cg-static/src/embed.rs', 'crates/knowdit-cg-static/src/fgw.rs'] | prompt: gate/adversary-review/haiku-55@2 (langfuse) | caller: unknown\r\n\r\nLOW - crates/knowdit-cg-static/src/embed.rs, `fn spawn`, line 187: `if port != 8766 && std::env::var(\"KNOWDIT_REPO_ROOT\").is_err() { return Err(()); }`. The comment on the line above says a non-8766 port \"can never become healthy\" and should degrade immediately. That gate is skipped whenever KNOWDIT_REPO_ROOT is set. With KNOWDIT_EMBED_MANAGED=1, a non-default KNOWDIT_EMBED_PORT, and KNOWDIT_REPO_ROOT set, the code spawns the child and then polls health for the full KNOWDIT_EMBED_STARTUP_MS (default 30 s) before degrading. The result is still the correct hashed fallback, so the impact is a startup stall, not a wrong result. The stall requires the operator to set REPO_ROOT, so it is LOW. The test `managed_guard_spawns_child_and_drop_reaps_it` relies on this exemption, so it may be intentional.\r\n\r\nLOW - crates/knowdit-cg-static/src/embed.rs, `fn acquire`, line 133: `std::env::set_var(\"KNOWDIT_EMBED_URL\", &url);`. `KNOWDIT_EMBED_URL` is process-global state, and the guard mutates it without any lock in production code. The `ENV_LOCK` only serialises the tests in this file. If two threads call `link_semantics_findings_neural` concurrently with a non-default port, one guard's Drop can restore the URL while the other guard is still embedding. The other guard's calls then fall back to the default URL or to hashed vectors. Whether callers are multi-threaded is not visible in the provided bytes, so this stays LOW.\r\n\r\nThe rebuttal points to a file path and cites no code, so it does not settle either point.\r\n\r\nVERDICT: WARN"
+ },
+ "adjudication": {
+  "denial": "reviews/gate_20261125-033711.md",
+  "outcomes": {
+   "fixed": 2
+  },
+  "detail": ".adversary/adjudications.json"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261125-034330.md": {
+   "embedded": "8b5489b4b5c3912f8600951992f54f00ee110ffc3438393b8d1f35a8209558dd",
+   "disk": "8b5489b4b5c3912f8600951992f54f00ee110ffc3438393b8d1f35a8209558dd"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "edlGntL07YETQzUZYUNlHzGw1gfzlyDYE49E7oej+3J5rfzGj6u29AXLaEWv0MQakKwP8YgI7zOsuyv5bRV/Aw==",
+ "mac": "75ece98d31f9f994cd502d12d905d1c3a362f72f24e1c1e3e995a4d8ad9efac7"
+}
