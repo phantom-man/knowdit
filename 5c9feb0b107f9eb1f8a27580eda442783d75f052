@@ -1,0 +1,37 @@
+{
+ "type": "CLEAR",
+ "commit": "5c9feb0b107f9eb1f8a27580eda442783d75f052",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261125-125531",
+ "files": {
+  "crates/knowdit-cg-static/src/embed.rs": {
+   "sha": "c69253624e66882d8a6362bf20b3ae34a570f2a977269a043c5fd9e658a336c8",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "WARN",
+   "when": "20261125-125527",
+   "artifact": ".adversary\\reviews\\gate_20261125-125527.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261125-125527.md": "model: @preset/gate-haiku-55 | provider: anthropic-messages | usage: {'prompt_tokens': 4944, 'completion_tokens': 865, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['crates/knowdit-cg-static/src/embed.rs'] | prompt: gate/adversary-review/haiku-55@2 (langfuse) | caller: unknown\r\n\r\nLOW: `crates/knowdit-cg-static/src/embed.rs`, in `managed_guard_spawns_child_and_drop_reaps_it`, the line `if !std::path::Path::new(STUB_PY).exists() {` followed by `return;`. The hardcoded `STUB_PY` path (`C:\\Users\\User\\source\\repos\\repo-memory\\.venv\\Scripts\\python.exe`) is absent on Ubuntu CI and other machines, so this early return makes the test pass without running any assertion. The spawn-and-reap path of `EmbedServerGuard` then has no coverage on those runners, and the green result does not show that. The return happens before any `test_env` call, so the env-leak risk is absent. The impact is reduced coverage that is reported as a pass, which requires a separate CI signal to notice. The author has stated this skip is intentional, so I rate it LOW.\r\n\r\nVERDICT: WARN"
+ },
+ "adjudication": {
+  "denial": "reviews/gate_20261125-125521.md",
+  "outcomes": {
+   "cleared-unedited": 1
+  },
+  "detail": ".adversary/adjudications.json"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261125-125527.md": {
+   "embedded": "5ccdea2bdb886654b605a006afd9465e9dce8761b8a831277f58b173bd93fbd1",
+   "disk": "5ccdea2bdb886654b605a006afd9465e9dce8761b8a831277f58b173bd93fbd1"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "cc7/lar9EKjJAgkA6HM7mTQgYai3OjTnlTZIder2zrrXdn8rBcUbxweoSOWT6oKn9xgK86V4ZvyCnuRqgeQhCw==",
+ "mac": "a57a429f6de24ded5a129d6be1c4424819f64b14be97946814eceaf9883d10de"
+}
