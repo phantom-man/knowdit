@@ -1,0 +1,37 @@
+{
+ "type": "CLEAR",
+ "commit": "b4b1b61dcf79f56cd75441e32a981f16efc2a81f",
+ "caller": "unknown",
+ "ladder": "ladder=cheap-pair sha=5cfe53fc0bc3",
+ "when": "20261125-120157",
+ "files": {
+  "crates/knowdit-cg-static/src/hyperbolic.rs": {
+   "sha": "259caf1c7520dc4cc1774d14c465767e4cb5558ab841e34aae99948380edd2c7",
+   "model": "@preset/gate-haiku-55",
+   "verdict": "WARN",
+   "when": "20261125-120153",
+   "artifact": ".adversary\\reviews\\gate_20261125-120153.md"
+  }
+ },
+ "artifacts": {
+  ".adversary\\reviews\\gate_20261125-120153.md": "model: @preset/gate-haiku-55 | provider: anthropic-messages | usage: {'prompt_tokens': 5619, 'completion_tokens': 1086, 'cached_tokens': 0, 'cost': 0} | scrubbed: 0 | ladder=cheap-pair sha=5cfe53fc0bc3 | files: ['crates/knowdit-cg-static/src/hyperbolic.rs'] | prompt: gate/adversary-review/haiku-55@2 (langfuse) | caller: unknown\r\n\r\nLOW: `crates/knowdit-cg-static/src/hyperbolic.rs` in the `short_name_cross_branch_collision_rejected` test. The diff removes the direct threshold checks `-        assert!(cross > CONE,` and `-        assert!(own < CONE, \"own-branch must remain inside the cone (dist={})\", own);`. The replacement only asserts the ordering `assert!(own < mid && mid < cross);`, so this regression test no longer checks the actual gate constant. Trigger: someone raises `pub const CONE: f64 = 0.51;` back to `1.0`, the audit 20261124-042814 cross-branch collision reappears, and this test still passes. Impact: the regression that motivated the tightening is no longer guarded by this test. The change itself does not make that regression reachable, so the severity is LOW. The other test, `same_branch_within_cone_cross_branch_outside`, still asserts against `CONE`, which partly mitigates this.\r\n\r\nThe `CONE` value itself is unchanged; the only change on that line is the appended comment, which I found no defect in. I could not verify the numeric ordering `own < mid < cross` against the hash constants from the visible bytes, so I raise nothing on it.\r\n\r\nVERDICT: WARN"
+ },
+ "adjudication": {
+  "denial": "reviews/gate_20261125-120147.md",
+  "outcomes": {
+   "cleared-unedited": 1
+  },
+  "detail": ".adversary/adjudications.json"
+ },
+ "artifacts_sha256": {
+  ".adversary\\reviews\\gate_20261125-120153.md": {
+   "embedded": "cead9b0cfc815078f9775a307f9dbb9a25798865c2398b35aadda46915d23067",
+   "disk": "cead9b0cfc815078f9775a307f9dbb9a25798865c2398b35aadda46915d23067"
+  }
+ },
+ "mac_key_created": "2026-10-31T02:35:15",
+ "sig_alg": "ed25519",
+ "sig_key_id": "e1d861e41bcdcfec",
+ "sig": "cqu+bX7c8Tqqy73pHCaR+L1dkT6TdelpSyRc6cKDZy7VUnVGF2p4Va9T8CMEAwRqDTed/VCGfZacqpv0vZ9FCg==",
+ "mac": "64582e7b1213113b792741e238c34ad847c6bb7a3fbaff2563683bdf52d2b4de"
+}
