@@ -528,12 +528,9 @@ async fn run_pipeline(
 
     if concurrency <= 1 {
         for project in pending {
-            let sink = checkpoint_dir.as_ref().map(|dir| {
-                knowdit_kg::checkpoint::CheckpointSink::new(
-                    dir,
-                    project.display_id(),
-                )
-            });
+            let sink = checkpoint_dir
+                .as_ref()
+                .map(|dir| knowdit_kg::checkpoint::CheckpointSink::new(dir, project.display_id()));
             match project
                 .categorize_and_extract(llm, &agent_options, None, sink.as_ref())
                 .await
@@ -758,7 +755,10 @@ mod tests {
     fn partial_loss_reports_both_counts() {
         let err = pipeline_outcome(
             3,
-            vec![lost("c4-1", "extract: boom"), lost("c4-2", "merge/write: bang")],
+            vec![
+                lost("c4-1", "extract: boom"),
+                lost("c4-2", "merge/write: bang"),
+            ],
         )
         .expect_err("2 of 3 lost must fail");
         let msg = err.to_string();
@@ -798,11 +798,8 @@ mod tests {
     /// reaches `lost` with the project's identity attached.
     #[test]
     fn a_concurrent_extraction_failure_fails_the_run() {
-        let err = pipeline_outcome(
-            3,
-            vec![lost("c4-77", "extract: reach output length limit")],
-        )
-        .expect_err("a concurrent extraction loss must fail the run");
+        let err = pipeline_outcome(3, vec![lost("c4-77", "extract: reach output length limit")])
+            .expect_err("a concurrent extraction loss must fail the run");
         let msg = err.to_string();
         assert!(msg.contains("1 of 3 project(s) failed"), "got: {msg}");
         assert!(msg.contains("c4-77"), "got: {msg}");

@@ -131,31 +131,67 @@ pub(crate) async fn load_or_extract_project_semantics(
     // (cycle-coherent shards + anchors + emit gates); fall back to legacy otherwise.
     let extract = match repo.load_call_graph().await {
         Ok(cg) if !cg.contracts.is_empty() => {
-            tracing::info!("Using graph-aware extraction ({} contracts) for {}", cg.contracts.len(), project.display_id());
+            tracing::info!(
+                "Using graph-aware extraction ({} contracts) for {}",
+                cg.contracts.len(),
+                project.display_id()
+            );
             let mut backings = knowdit_kg::learn::ExtractBackings::default();
             match repo.load_storage_graph().await {
-                Ok(st) => backings.storage_deps = knowdit_cg_static::shard_pack::storage_dependencies(&cg, &st),
-                Err(e) => tracing::warn!("Storage-graph load failed for {} ({}); coverage gate disabled", project.display_id(), e),
+                Ok(st) => {
+                    backings.storage_deps =
+                        knowdit_cg_static::shard_pack::storage_dependencies(&cg, &st)
+                }
+                Err(e) => tracing::warn!(
+                    "Storage-graph load failed for {} ({}); coverage gate disabled",
+                    project.display_id(),
+                    e
+                ),
             }
             for s in &existing {
                 for fn_ in &s.functions {
-                    backings.existing_nodes.push((fn_.contract.clone(), s.name.clone()));
+                    backings
+                        .existing_nodes
+                        .push((fn_.contract.clone(), s.name.clone()));
                 }
             }
             legacy
-                .categorize_and_extract_semantics_with_graph(llm, agent_options, extract_chunk_input_budget, None, &cg, Some(&backings))
+                .categorize_and_extract_semantics_with_graph(
+                    llm,
+                    agent_options,
+                    extract_chunk_input_budget,
+                    None,
+                    &cg,
+                    Some(&backings),
+                )
                 .await?
         }
         Ok(_) => {
-            tracing::info!("No stored call graph for {}; using legacy extraction", project.display_id());
+            tracing::info!(
+                "No stored call graph for {}; using legacy extraction",
+                project.display_id()
+            );
             legacy
-                .categorize_and_extract_semantics(llm, agent_options, extract_chunk_input_budget, None)
+                .categorize_and_extract_semantics(
+                    llm,
+                    agent_options,
+                    extract_chunk_input_budget,
+                    None,
+                )
                 .await?
         }
         Err(e) => {
-            tracing::warn!("Call-graph load failed for {} ({e}); falling back to legacy extraction", project.display_id());
+            tracing::warn!(
+                "Call-graph load failed for {} ({e}); falling back to legacy extraction",
+                project.display_id()
+            );
             legacy
-                .categorize_and_extract_semantics(llm, agent_options, extract_chunk_input_budget, None)
+                .categorize_and_extract_semantics(
+                    llm,
+                    agent_options,
+                    extract_chunk_input_budget,
+                    None,
+                )
                 .await?
         }
     };

@@ -19,8 +19,11 @@ fn adjacency(cg: &CallGraph) -> (BTreeMap<i32, Vec<i32>>, BTreeMap<i32, String>)
     // no matching contract function is an unresolved external call: keep it out
     // of the graph entirely, otherwise shard_groups emits a phantom singleton
     // with tokens_est 0 and pack_shards publishes a nonexistent function id.
-    let known: BTreeSet<i32> = cg.contracts.values()
-        .flat_map(|c| c.functions.iter().map(|f| f.id)).collect();
+    let known: BTreeSet<i32> = cg
+        .contracts
+        .values()
+        .flat_map(|c| c.functions.iter().map(|f| f.id))
+        .collect();
     let mut adj: BTreeMap<i32, Vec<i32>> = BTreeMap::new();
     let mut names: BTreeMap<i32, String> = BTreeMap::new();
     for c in cg.contracts.values() {
@@ -89,7 +92,16 @@ fn scc(adj: &BTreeMap<i32, Vec<i32>>) -> Vec<Vec<i32>> {
 
     for &v in adj.keys() {
         if !indices.contains_key(&v) {
-            strongconnect(v, adj, &mut index, &mut indices, &mut low, &mut on_stack, &mut stack, &mut out);
+            strongconnect(
+                v,
+                adj,
+                &mut index,
+                &mut indices,
+                &mut low,
+                &mut on_stack,
+                &mut stack,
+                &mut out,
+            );
         }
     }
     out.sort();
@@ -147,12 +159,18 @@ pub fn cycle_signature(cg: &CallGraph, ids: &[i32]) -> String {
     while let Some(v) = cur {
         chain.push(v);
         visited.insert(v);
-        let next = adj.get(&v).and_then(|outs| outs.iter().copied()
-            .find(|to| group.contains(to) && !visited.contains(to)))
+        let next = adj
+            .get(&v)
+            .and_then(|outs| {
+                outs.iter()
+                    .copied()
+                    .find(|to| group.contains(to) && !visited.contains(to))
+            })
             .or_else(|| group.iter().copied().find(|x| !visited.contains(x)));
         cur = next;
     }
-    let rendered: Vec<String> = chain.iter()
+    let rendered: Vec<String> = chain
+        .iter()
         .map(|i| names.get(i).cloned().unwrap_or_else(|| format!("#{}", i)))
         .collect();
     let mut s = rendered.join(" -> ");
@@ -181,7 +199,11 @@ pub fn pack_shards(cg: &CallGraph, budget_tokens: usize) -> Vec<Shard> {
         let gt = tokens_est(cg, &g);
         let is_cycle = cycles.contains(&g);
         if !cur.is_empty() && cur_tok + gt > budget_tokens {
-            shards.push(Shard { function_ids: cur.clone(), tokens_est: cur_tok, signature: cur_sig.clone() });
+            shards.push(Shard {
+                function_ids: cur.clone(),
+                tokens_est: cur_tok,
+                signature: cur_sig.clone(),
+            });
             cur.clear();
             cur_tok = 0;
             cur_sig = None;
@@ -193,7 +215,11 @@ pub fn pack_shards(cg: &CallGraph, budget_tokens: usize) -> Vec<Shard> {
         }
     }
     if !cur.is_empty() {
-        shards.push(Shard { function_ids: cur, tokens_est: cur_tok, signature: cur_sig });
+        shards.push(Shard {
+            function_ids: cur,
+            tokens_est: cur_tok,
+            signature: cur_sig,
+        });
     }
     shards
 }
@@ -215,7 +241,9 @@ pub fn anchored(cg: &CallGraph, fn_ids: &[i32], container_id: i32) -> bool {
 /// a bare function name must be UNIQUE: if two overloads share it, the anchor
 /// is ambiguous and must be rejected rather than resolved by iteration order.
 fn anchored_function_id(cg: &CallGraph, fname: &str, cpath: &str) -> Option<i32> {
-    let candidates: Vec<&knowdit_repo_model::cg::Contract> = cg.contracts.values()
+    let candidates: Vec<&knowdit_repo_model::cg::Contract> = cg
+        .contracts
+        .values()
         .filter(|c| {
             let cp = c.relative_file_path.to_string_lossy().replace('\\', "/");
             cp == cpath
@@ -227,11 +255,16 @@ fn anchored_function_id(cg: &CallGraph, fname: &str, cpath: &str) -> Option<i32>
     // stored path `vendor/a.sol` must match anchor `a.sol`. The boundary is a
     // literal "/", so `MyToken.sol` never matches `Token.sol`.
     let candidates: Vec<&knowdit_repo_model::cg::Contract> = if candidates.is_empty() {
-        cg.contracts.values().filter(|c| {
-            let cp = c.relative_file_path.to_string_lossy().replace('\\', "/");
-            cp.ends_with(&format!("/{}", cpath)) || cpath.ends_with(&format!("/{}", cp))
-        }).collect()
-    } else { candidates };
+        cg.contracts
+            .values()
+            .filter(|c| {
+                let cp = c.relative_file_path.to_string_lossy().replace('\\', "/");
+                cp.ends_with(&format!("/{}", cpath)) || cpath.ends_with(&format!("/{}", cp))
+            })
+            .collect()
+    } else {
+        candidates
+    };
     let mut id = None;
     for c in &candidates {
         let mut matches = c.functions.iter().filter(|f| f.name == fname);
@@ -261,7 +294,9 @@ pub fn functions_anchored(cg: &CallGraph, funcs: &[(String, String)]) -> bool {
         let norm = cpath.replace('\\', "/");
         let matched = anchored_function_id(cg, fname, &norm);
         match matched {
-            Some(id) => { anchored_ids.insert(id); }
+            Some(id) => {
+                anchored_ids.insert(id);
+            }
             None => return false,
         }
     }
@@ -277,12 +312,18 @@ pub fn render_shard(cg: &CallGraph, shard: &Shard) -> String {
     let ids: BTreeSet<i32> = shard.function_ids.iter().copied().collect();
     let mut out = String::from("## Source Files\n\n");
     for c in cg.contracts.values() {
-        let funcs: Vec<&knowdit_repo_model::cg::Function> = c.functions.iter().filter(|f| ids.contains(&f.id)).collect();
-        if funcs.is_empty() { continue; }
+        let funcs: Vec<&knowdit_repo_model::cg::Function> =
+            c.functions.iter().filter(|f| ids.contains(&f.id)).collect();
+        if funcs.is_empty() {
+            continue;
+        }
         out.push_str(&format!("### {}\n", c.relative_file_path.to_string_lossy()));
         out.push_str("```solidity\n");
         for f in funcs {
-            if let Some(content) = &f.content { out.push_str(content); out.push('\n'); }
+            if let Some(content) = &f.content {
+                out.push_str(content);
+                out.push('\n');
+            }
         }
         out.push_str("```\n\n");
     }
@@ -292,7 +333,11 @@ pub fn render_shard(cg: &CallGraph, shard: &Shard) -> String {
 /// Materialize shards as SEQUENTIAL files (shard-0000.sol ...) + manifest.json BEFORE
 /// extraction, so agents can resume by stable shard index+content-hash. Returns the
 /// manifest entries (index, file, function_ids, signature, tokens_est).
-pub fn materialize_shards(cg: &CallGraph, budget: usize, out_dir: &std::path::Path) -> std::io::Result<Vec<serde_json::Value>> {
+pub fn materialize_shards(
+    cg: &CallGraph,
+    budget: usize,
+    out_dir: &std::path::Path,
+) -> std::io::Result<Vec<serde_json::Value>> {
     std::fs::create_dir_all(out_dir)?;
     let shards = pack_shards(cg, budget);
     let mut manifest = Vec::new();
@@ -305,7 +350,10 @@ pub fn materialize_shards(cg: &CallGraph, budget: usize, out_dir: &std::path::Pa
             "signature": s.signature, "tokens_est": s.tokens_est,
         }));
     }
-    std::fs::write(out_dir.join("manifest.json"), serde_json::to_string_pretty(&manifest).unwrap())?;
+    std::fs::write(
+        out_dir.join("manifest.json"),
+        serde_json::to_string_pretty(&manifest).unwrap(),
+    )?;
     Ok(manifest)
 }
 
@@ -316,17 +364,31 @@ pub fn materialize_shards(cg: &CallGraph, budget: usize, out_dir: &std::path::Pa
 pub fn graph_features(cg: &CallGraph, ids: Option<&[i32]>) -> String {
     let scope: BTreeSet<i32> = match ids {
         Some(v) => v.iter().copied().collect(),
-        None => cg.contracts.values().flat_map(|c| c.functions.iter().map(|f| f.id)).collect(),
+        None => cg
+            .contracts
+            .values()
+            .flat_map(|c| c.functions.iter().map(|f| f.id))
+            .collect(),
     };
     let mut indeg: BTreeMap<i32, usize> = BTreeMap::new();
     let mut internal = 0usize;
     let mut external = 0usize;
     let name = |id: i32| -> String {
-        cg.contracts.values().find_map(|c| c.functions.iter().find(|f| f.id == id).map(|f| f.name.clone())).unwrap_or_default()
+        cg.contracts
+            .values()
+            .find_map(|c| {
+                c.functions
+                    .iter()
+                    .find(|f| f.id == id)
+                    .map(|f| f.name.clone())
+            })
+            .unwrap_or_default()
     };
     for c in cg.contracts.values() {
         for f in &c.functions {
-            if !scope.contains(&f.id) { continue; }
+            if !scope.contains(&f.id) {
+                continue;
+            }
             for call in &f.calls {
                 if scope.contains(&call.to_id) {
                     internal += 1;
@@ -340,9 +402,18 @@ pub fn graph_features(cg: &CallGraph, ids: Option<&[i32]>) -> String {
     let mut hubs: Vec<(i32, usize)> = indeg.into_iter().collect();
     hubs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
     let mut out = String::from("## Graph context (structure alongside the source)\n");
-    out.push_str(&format!("- functions: {} | internal call edges: {} | external calls: {}\n", scope.len(), internal, external));
+    out.push_str(&format!(
+        "- functions: {} | internal call edges: {} | external calls: {}\n",
+        scope.len(),
+        internal,
+        external
+    ));
     if !hubs.is_empty() {
-        let top: Vec<String> = hubs.iter().take(5).map(|(id, d)| format!("{} (in-degree {})", name(*id), d)).collect();
+        let top: Vec<String> = hubs
+            .iter()
+            .take(5)
+            .map(|(id, d)| format!("{} (in-degree {})", name(*id), d))
+            .collect();
         out.push_str(&format!("- hub functions: {}\n", top.join(", ")));
     }
     if ids.is_none() {
@@ -355,15 +426,27 @@ pub fn graph_features(cg: &CallGraph, ids: Option<&[i32]>) -> String {
 
 /// Build state-variable -> [function names] read/write map from the static call + storage
 /// graphs, for the get_storage_dependencies agent tool (group coupled functions).
-pub fn storage_dependencies(cg: &CallGraph, storage: &StorageGraph) -> BTreeMap<String, Vec<String>> {
-    let fname: BTreeMap<i32, String> = cg.contracts.values()
-        .flat_map(|c| c.functions.iter().map(|f| (f.id, f.name.clone()))).collect();
+pub fn storage_dependencies(
+    cg: &CallGraph,
+    storage: &StorageGraph,
+) -> BTreeMap<String, Vec<String>> {
+    let fname: BTreeMap<i32, String> = cg
+        .contracts
+        .values()
+        .flat_map(|c| c.functions.iter().map(|f| (f.id, f.name.clone())))
+        .collect();
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for fsv in &storage.function_state_variables {
-        let Some(var) = storage.state_variables.get(&fsv.state_variable_id) else { continue };
-        let Some(fn_) = fname.get(&fsv.function_id) else { continue };
+        let Some(var) = storage.state_variables.get(&fsv.state_variable_id) else {
+            continue;
+        };
+        let Some(fn_) = fname.get(&fsv.function_id) else {
+            continue;
+        };
         let e = out.entry(var.name.clone()).or_default();
-        if !e.contains(fn_) { e.push(fn_.clone()); }
+        if !e.contains(fn_) {
+            e.push(fn_.clone());
+        }
     }
     out
 }
@@ -375,7 +458,12 @@ mod tests {
     use std::path::PathBuf;
 
     fn loc() -> FileLocation {
-        FileLocation { start_line: 1, start_column: 0, end_line: 2, end_column: 0 }
+        FileLocation {
+            start_line: 1,
+            start_column: 0,
+            end_line: 2,
+            end_column: 0,
+        }
     }
     fn func(id: i32, name: &str, calls: Vec<i32>) -> Function {
         Function {
@@ -385,24 +473,56 @@ mod tests {
             relative_file_path: PathBuf::from("a.sol"),
             loc: loc(),
             content: Some("x".repeat(40)),
-            calls: calls.into_iter().enumerate().map(|(i, to)| FunctionCall { id: i as i32, from_id: id, to_id: to, description: None }).collect(),
+            calls: calls
+                .into_iter()
+                .enumerate()
+                .map(|(i, to)| FunctionCall {
+                    id: i as i32,
+                    from_id: id,
+                    to_id: to,
+                    description: None,
+                })
+                .collect(),
             description: None,
         }
     }
     fn graph() -> CallGraph {
-        let mut cg = CallGraph { contracts: BTreeMap::new(), interfaces: BTreeMap::new() };
-        cg.contracts.insert(1, Contract {
-            id: 1, name: "Cyc".into(), relative_file_path: PathBuf::from("a.sol"),
-            chunk: FileChunk { loc: loc(), content: String::new() },
-            functions: vec![func(1, "A", vec![2]), func(2, "B", vec![3]), func(3, "C", vec![1])],
-            description: None,
-        });
-        cg.contracts.insert(2, Contract {
-            id: 2, name: "Solo".into(), relative_file_path: PathBuf::from("b.sol"),
-            chunk: FileChunk { loc: loc(), content: String::new() },
-            functions: vec![func(4, "D", vec![])],
-            description: None,
-        });
+        let mut cg = CallGraph {
+            contracts: BTreeMap::new(),
+            interfaces: BTreeMap::new(),
+        };
+        cg.contracts.insert(
+            1,
+            Contract {
+                id: 1,
+                name: "Cyc".into(),
+                relative_file_path: PathBuf::from("a.sol"),
+                chunk: FileChunk {
+                    loc: loc(),
+                    content: String::new(),
+                },
+                functions: vec![
+                    func(1, "A", vec![2]),
+                    func(2, "B", vec![3]),
+                    func(3, "C", vec![1]),
+                ],
+                description: None,
+            },
+        );
+        cg.contracts.insert(
+            2,
+            Contract {
+                id: 2,
+                name: "Solo".into(),
+                relative_file_path: PathBuf::from("b.sol"),
+                chunk: FileChunk {
+                    loc: loc(),
+                    content: String::new(),
+                },
+                functions: vec![func(4, "D", vec![])],
+                description: None,
+            },
+        );
         cg
     }
 
@@ -413,7 +533,11 @@ mod tests {
         assert_eq!(cyc, vec![vec![1, 2, 3]]);
         let shards = pack_shards(&cg, 1000);
         // the 3-cycle must appear together in one shard
-        assert!(shards.iter().any(|s| [1, 2, 3].iter().all(|i| s.function_ids.contains(i))));
+        assert!(
+            shards
+                .iter()
+                .any(|s| [1, 2, 3].iter().all(|i| s.function_ids.contains(i)))
+        );
         assert!(shards.iter().any(|s| s.signature.is_some()));
     }
 
@@ -424,7 +548,10 @@ mod tests {
         let shards = pack_shards(&cg, 5);
         for s in &shards {
             let has = |i: i32| s.function_ids.contains(&i);
-            assert!(!(has(1) ^ has(2)) && !(has(2) ^ has(3)), "cycle split across shards");
+            assert!(
+                !(has(1) ^ has(2)) && !(has(2) ^ has(3)),
+                "cycle split across shards"
+            );
         }
     }
 
@@ -449,7 +576,10 @@ mod tests {
                 *seen.entry(*id).or_insert(0) += 1;
             }
         }
-        assert!(seen.values().all(|c| *c == 1), "a function was split across shards");
+        assert!(
+            seen.values().all(|c| *c == 1),
+            "a function was split across shards"
+        );
         assert_eq!(seen.len(), 4);
     }
 
@@ -470,17 +600,33 @@ mod tests {
     fn anchored_functions_must_share_one_group() {
         // contract1: A<->B cycle + C singleton; contract2: D singleton.
         let mut cg = graph();
-        cg.contracts.get_mut(&1).unwrap().functions.push(func(5, "C", vec![]));
+        cg.contracts
+            .get_mut(&1)
+            .unwrap()
+            .functions
+            .push(func(5, "C", vec![]));
         // A(id1) in cycle group, D(id4) in singleton group -> must reject.
-        assert!(!functions_anchored(&cg, &[("A".into(), "a.sol".into()), ("D".into(), "b.sol".into())]));
-        assert!(functions_anchored(&cg, &[("A".into(), "a.sol".into()), ("B".into(), "a.sol".into())]));
+        assert!(!functions_anchored(
+            &cg,
+            &[("A".into(), "a.sol".into()), ("D".into(), "b.sol".into())]
+        ));
+        assert!(functions_anchored(
+            &cg,
+            &[("A".into(), "a.sol".into()), ("B".into(), "a.sol".into())]
+        ));
     }
 
     #[test]
     fn functions_anchored_co_shard() {
         let cg = graph();
-        assert!(functions_anchored(&cg, &[("A".into(), "a.sol".into()), ("B".into(), "a.sol".into())]));
-        assert!(!functions_anchored(&cg, &[("A".into(), "a.sol".into()), ("D".into(), "b.sol".into())]));
+        assert!(functions_anchored(
+            &cg,
+            &[("A".into(), "a.sol".into()), ("B".into(), "a.sol".into())]
+        ));
+        assert!(!functions_anchored(
+            &cg,
+            &[("A".into(), "a.sol".into()), ("D".into(), "b.sol".into())]
+        ));
         assert!(!functions_anchored(&cg, &[("Z".into(), "a.sol".into())]));
     }
 
@@ -492,11 +638,17 @@ mod tests {
         let mut cg = graph();
         // A(1)->C(3), C(3)->B(2), B(2)->A(1): sorted group [1,2,3] but call order 1,3,2.
         cg.contracts.get_mut(&1).unwrap().functions = vec![
-            func(1, "A", vec![3]), func(2, "B", vec![1]), func(3, "C", vec![2]),
+            func(1, "A", vec![3]),
+            func(2, "B", vec![1]),
+            func(3, "C", vec![2]),
         ];
         let g = vec![1, 2, 3];
         let sig = cycle_signature(&cg, &g);
-        assert_eq!(sig, "A -> C -> B -> A", "signature must be the real call chain, got {}", sig);
+        assert_eq!(
+            sig, "A -> C -> B -> A",
+            "signature must be the real call chain, got {}",
+            sig
+        );
     }
 
     // Regression: audit 20261124-035252 F2. A call to an id with no contract
@@ -508,11 +660,18 @@ mod tests {
         let mut cg = graph();
         // 1 -> 2 and 3; 2 -> 1; 3 -> 1. One SCC {1,2,3}, not a simple cycle.
         cg.contracts.get_mut(&1).unwrap().functions = vec![
-            func(1, "A", vec![2, 3]), func(2, "B", vec![1]), func(3, "C", vec![1]),
+            func(1, "A", vec![2, 3]),
+            func(2, "B", vec![1]),
+            func(3, "C", vec![1]),
         ];
         let sig = cycle_signature(&cg, &[1, 2, 3]);
         for name in ["A", "B", "C"] {
-            assert!(sig.contains(name), "member {} dropped from signature {}", name, sig);
+            assert!(
+                sig.contains(name),
+                "member {} dropped from signature {}",
+                name,
+                sig
+            );
         }
     }
 
@@ -521,8 +680,15 @@ mod tests {
         let mut cg = graph();
         cg.contracts.get_mut(&1).unwrap().functions = vec![func(1, "A", vec![99])];
         let shards = pack_shards(&cg, 1000);
-        let ids: Vec<i32> = shards.iter().flat_map(|s| s.function_ids.iter().copied()).collect();
-        assert!(!ids.contains(&99), "phantom function id 99 leaked into shards: {:?}", ids);
+        let ids: Vec<i32> = shards
+            .iter()
+            .flat_map(|s| s.function_ids.iter().copied())
+            .collect();
+        assert!(
+            !ids.contains(&99),
+            "phantom function id 99 leaked into shards: {:?}",
+            ids
+        );
         assert!(ids.contains(&1));
     }
 
@@ -533,14 +699,27 @@ mod tests {
         let mut cg = graph();
         cg.contracts.get_mut(&1).unwrap().relative_file_path = PathBuf::from("vendor/a.sol");
         cg.contracts.get_mut(&1).unwrap().functions = vec![func(1, "f", vec![])];
-        cg.contracts.insert(3, Contract {
-            id: 3, name: "Exact".into(), relative_file_path: PathBuf::from("a.sol"),
-            chunk: FileChunk { loc: loc(), content: String::new() },
-            functions: vec![func(6, "f", vec![7]), func(7, "g", vec![6])],
-            description: None,
-        });
-        assert!(functions_anchored(&cg, &[("f".into(), "a.sol".into()), ("g".into(), "a.sol".into())]),
-            "exact a.sol cycle must be accepted, not matched to vendor/a.sol singleton");
+        cg.contracts.insert(
+            3,
+            Contract {
+                id: 3,
+                name: "Exact".into(),
+                relative_file_path: PathBuf::from("a.sol"),
+                chunk: FileChunk {
+                    loc: loc(),
+                    content: String::new(),
+                },
+                functions: vec![func(6, "f", vec![7]), func(7, "g", vec![6])],
+                description: None,
+            },
+        );
+        assert!(
+            functions_anchored(
+                &cg,
+                &[("f".into(), "a.sol".into()), ("g".into(), "a.sol".into())]
+            ),
+            "exact a.sol cycle must be accepted, not matched to vendor/a.sol singleton"
+        );
     }
 
     // Regression: audit 20261124-041549 F4. Two same-named functions in one
@@ -550,18 +729,30 @@ mod tests {
     #[test]
     fn anchor_repo_qualified_path_matches_short_stored_path() {
         let cg = graph(); // contract a.sol has cycle A<->B
-        assert!(functions_anchored(&cg, &[
-            ("A".into(), "contracts/a.sol".into()),
-            ("B".into(), "contracts/a.sol".into()),
-        ]), "repo-qualified anchor path must resolve to a.sol");
+        assert!(
+            functions_anchored(
+                &cg,
+                &[
+                    ("A".into(), "contracts/a.sol".into()),
+                    ("B".into(), "contracts/a.sol".into()),
+                ]
+            ),
+            "repo-qualified anchor path must resolve to a.sol"
+        );
     }
 
     #[test]
     fn duplicate_function_name_anchor_rejected() {
         let mut cg = graph();
-        cg.contracts.get_mut(&1).unwrap().functions.push(func(5, "A", vec![]));
-        assert!(!functions_anchored(&cg, &[("A".into(), "a.sol".into())]),
-            "ambiguity must reject, not silently resolve to id 1");
+        cg.contracts
+            .get_mut(&1)
+            .unwrap()
+            .functions
+            .push(func(5, "A", vec![]));
+        assert!(
+            !functions_anchored(&cg, &[("A".into(), "a.sol".into())]),
+            "ambiguity must reject, not silently resolve to id 1"
+        );
     }
 
     #[test]

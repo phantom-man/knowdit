@@ -235,10 +235,18 @@ impl SolidityRepackShardsArgs {
                 s.signature.as_deref().unwrap_or("-")
             );
         }
-        println!("{} shard(s) from {} contract(s)", shards.len(), cg.contracts.len());
+        println!(
+            "{} shard(s) from {} contract(s)",
+            shards.len(),
+            cg.contracts.len()
+        );
         if let Some(dir) = &self.out_dir {
             let man = knowdit_cg_static::shard_pack::materialize_shards(&cg, self.budget, dir)?;
-            println!("materialized {} shard file(s) + manifest.json to {}", man.len(), dir.display());
+            println!(
+                "materialized {} shard file(s) + manifest.json to {}",
+                man.len(),
+                dir.display()
+            );
         }
         if let Some(out) = self.output {
             let plan: Vec<serde_json::Value> = shards
@@ -284,17 +292,36 @@ impl SolidityExtractShardsArgs {
             backings.storage_deps = knowdit_cg_static::shard_pack::storage_dependencies(&cg, &st);
         }
         if let Ok(ex) = repo.load_project_semantics().await {
-            for s in &ex { for fn_ in &s.functions { backings.existing_nodes.push((fn_.contract.clone(), s.name.clone())); } }
+            for s in &ex {
+                for fn_ in &s.functions {
+                    backings
+                        .existing_nodes
+                        .push((fn_.contract.clone(), s.name.clone()));
+                }
+            }
         }
         let llm = self.llm.clone().to_llm().await;
         let legacy = knowdit_kg::project_loader::ProjectData::from_project_view(&project);
         let options = knowdit_kg::agent_runner::AgentRunOptions::new(self.max_agent_steps);
         let result = legacy
-            .categorize_and_extract_from_shards(&self.shards_dir, &llm, &options, None, &cg, Some(&backings))
+            .categorize_and_extract_from_shards(
+                &self.shards_dir,
+                &llm,
+                &options,
+                None,
+                &cg,
+                Some(&backings),
+            )
             .await?;
-        println!("extracted {} semantics from shards in {}", result.semantics.len(), self.shards_dir.display());
+        println!(
+            "extracted {} semantics from shards in {}",
+            result.semantics.len(),
+            self.shards_dir.display()
+        );
         if let Some(out) = self.output {
-            if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) { std::fs::create_dir_all(parent)?; }
+            if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+                std::fs::create_dir_all(parent)?;
+            }
             std::fs::write(&out, serde_json::to_string_pretty(&result.semantics)?)?;
         }
         Ok(())

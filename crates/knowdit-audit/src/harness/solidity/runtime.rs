@@ -29,9 +29,9 @@ use knowdit_repo_model::{
     CodeGenCore, CodeGenRecord, CodeGenStatus, CoverageEntry, HarnessRunRecord,
     HistoricalSemanticRecord, RepoDatabase, SemanticMatchSet,
 };
-use llmy::agent::{LLMYError, StepResult};
 use llmy::agent::tool::ToolBox;
 use llmy::agent::tools::memory::AgentMemoryContext;
+use llmy::agent::{LLMYError, StepResult};
 use llmy::client::client::LLM;
 use llmy::harness::Agent;
 use llmy::harness::memory::AgentMemorySystemPromptCriteria;
@@ -606,9 +606,7 @@ impl AgentLoopState {
                 if e.filtered().is_some() {
                     AttemptOutcome::FilteredRestart
                 } else {
-                    AttemptOutcome::AgentError(format!(
-                        "step {step_no} after neutralization: {e}"
-                    ))
+                    AttemptOutcome::AgentError(format!("step {step_no} after neutralization: {e}"))
                 }
             })
     }
@@ -648,7 +646,8 @@ impl AgentLoopState {
             // place first (keeps the work); a fresh attempt re-reads the
             // harness file from disk and drops the narration entirely.
             Err(e) if e.filtered().is_some() => {
-                match self.repair_refused_step_once(e, agent, llm, &mut neutralized, *total_steps)
+                match self
+                    .repair_refused_step_once(e, agent, llm, &mut neutralized, *total_steps)
                     .await
                 {
                     Ok(s) => s,
@@ -707,7 +706,8 @@ impl AgentLoopState {
                 // then fall back to a clean restart — see the initial-step
                 // arm for why.
                 Err(e) if e.filtered().is_some() => {
-                    match self.repair_refused_step_once(e, agent, llm, &mut neutralized, *total_steps)
+                    match self
+                        .repair_refused_step_once(e, agent, llm, &mut neutralized, *total_steps)
                         .await
                     {
                         Ok(s) => s,

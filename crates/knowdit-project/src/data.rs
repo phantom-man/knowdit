@@ -380,12 +380,16 @@ impl ProjectSpec {
         // truncated `p:C:\repo` to path "C" on Windows.
         let (name, tail) = match spec.split_once(':') {
             Some((n, t)) if !n.trim().is_empty() => (n, t),
-            _ => return Err(eyre!(
-                "expected `name:path` or `name:path:platform_id`, got `{}`", spec)),
+            _ => {
+                return Err(eyre!(
+                    "expected `name:path` or `name:path:platform_id`, got `{}`",
+                    spec
+                ));
+            }
         };
-        let drive_colon = |v: &str| v.len() >= 2
-            && v.as_bytes()[1] == b':'
-            && v[2..].starts_with(|c| c == '\\' || c == '/');
+        let drive_colon = |v: &str| {
+            v.len() >= 2 && v.as_bytes()[1] == b':' && v[2..].starts_with(|c| c == '\\' || c == '/')
+        };
         // Optional platform id is the last `:suffix` where the suffix is a
         // single token and the colon is not a drive colon.
         let (root, platform_id) = if let Some(pos) = tail.rfind(':') {
@@ -393,8 +397,8 @@ impl ProjectSpec {
             // `path` may itself be `C:\...` (drive_colon true) - that is
             // fine, the LAST colon is still the platform-id separator as
             // long as the suffix is a single token.
-            if !pid.is_empty() && !pid.contains('\\') && !pid.contains('/')
-                && !path.ends_with(':') {
+            if !pid.is_empty() && !pid.contains('\\') && !pid.contains('/') && !path.ends_with(':')
+            {
                 (path, Some(pid))
             } else {
                 (tail, None)
@@ -553,7 +557,8 @@ mod tests {
         // `shellexpand::tilde`. Read the test environment's current
         // `$HOME` rather than mutating it — `set_var` races between
         // concurrent tests.
-        let home = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE"))
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
             .expect("HOME or USERPROFILE should be set in the test environment");
         let p = ProjectSpec::parse("foo:~/megaeth/normal-account").unwrap();
         assert_eq!(p.root, PathBuf::from(home).join("megaeth/normal-account"));

@@ -12,11 +12,11 @@ use crate::project_loader::ProjectData;
 use crate::prompts;
 use crate::vulnerability::{VulnerabilityCategory, resolve_taxonomy_entry};
 use itertools::Itertools;
+use knowdit_cg_static::shard_pack;
 pub use knowdit_kg_model::{ExtractedFinding, ExtractedFunction, ExtractedSemantic};
+use knowdit_repo_model::cg::CallGraph;
 use llmy::client::client::LLM;
 use llmy::client::context::TokenCursor;
-use knowdit_repo_model::cg::CallGraph;
-use knowdit_cg_static::shard_pack;
 use llmy::client::model::OpenAIModel;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -46,16 +46,23 @@ fn resume_signature_hash(chunk: &str, suffix: &str, gating: &str) -> String {
 }
 
 /// Stable string for call-graph gating inputs at extraction time.
-fn call_graph_gating(cg: Option<&knowdit_repo_model::cg::CallGraph>, ids: Option<&[i32]>) -> String {
-    let Some(cg) = cg else { return "none".into(); };
+fn call_graph_gating(
+    cg: Option<&knowdit_repo_model::cg::CallGraph>,
+    ids: Option<&[i32]>,
+) -> String {
+    let Some(cg) = cg else {
+        return "none".into();
+    };
     let cycles = knowdit_cg_static::shard_pack::cycle_groups(cg);
     let feats = knowdit_cg_static::shard_pack::graph_features(cg, ids);
     let mut sig = String::new();
-    for g in &cycles { sig.push_str(&knowdit_cg_static::shard_pack::cycle_signature(cg, g)); sig.push('\n'); }
+    for g in &cycles {
+        sig.push_str(&knowdit_cg_static::shard_pack::cycle_signature(cg, g));
+        sig.push('\n');
+    }
     sig.push_str(&feats);
     sig
 }
-
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -348,14 +355,32 @@ impl ProjectData {
         backings: Option<&ExtractBackings>,
     ) -> Result<ExtractResult> {
         if self.source_files().is_empty() {
-            return Ok(ExtractResult { categories: vec![], semantics: vec![], findings: vec![], in_project_links: InProjectLinks::default() });
+            return Ok(ExtractResult {
+                categories: vec![],
+                semantics: vec![],
+                findings: vec![],
+                in_project_links: InProjectLinks::default(),
+            });
         }
         let categories = self.categorize(llm, agent_options).await?;
         let all_semantics = self
-            .extract_semantics_with_graph(llm, &categories, agent_options, chunk_input_budget, sink, call_graph, backings)
+            .extract_semantics_with_graph(
+                llm,
+                &categories,
+                agent_options,
+                chunk_input_budget,
+                sink,
+                call_graph,
+                backings,
+            )
             .await?;
         let deduped = Self::dedup_semantics(all_semantics);
-        Ok(ExtractResult { categories, semantics: deduped, findings: Vec::new(), in_project_links: InProjectLinks::default() })
+        Ok(ExtractResult {
+            categories,
+            semantics: deduped,
+            findings: Vec::new(),
+            in_project_links: InProjectLinks::default(),
+        })
     }
 
     /// Categorize then extract over MATERIALIZED shards (resume-safe, tool-enabled).
@@ -369,9 +394,24 @@ impl ProjectData {
         backings: Option<&ExtractBackings>,
     ) -> Result<ExtractResult> {
         let categories = self.categorize(llm, agent_options).await?;
-        let sems = self.extract_semantics_from_shards(shards_dir, llm, &categories, agent_options, sink, Some(call_graph), backings).await?;
+        let sems = self
+            .extract_semantics_from_shards(
+                shards_dir,
+                llm,
+                &categories,
+                agent_options,
+                sink,
+                Some(call_graph),
+                backings,
+            )
+            .await?;
         let deduped = Self::dedup_semantics(sems);
-        Ok(ExtractResult { categories, semantics: deduped, findings: Vec::new(), in_project_links: InProjectLinks::default() })
+        Ok(ExtractResult {
+            categories,
+            semantics: deduped,
+            findings: Vec::new(),
+            in_project_links: InProjectLinks::default(),
+        })
     }
 
     /// Phase 2: Merge extracted semantics with existing KB and write to DB.
@@ -506,8 +546,7 @@ impl ProjectData {
                 continue;
             }
 
-            let filtered =
-                crate::source_filter::filter_content(&file.content, &lang);
+            let filtered = crate::source_filter::filter_content(&file.content, &lang);
             content.push_str(&format!(
                 "### {}\n```{}\n{}\n```\n\n",
                 path.display(),
@@ -627,7 +666,16 @@ impl ProjectData {
         chunk_input_budget: Option<usize>,
         sink: Option<&crate::checkpoint::CheckpointSink>,
     ) -> Result<Vec<ExtractedSemantic>> {
-        self.extract_semantics_inner(llm, categories, agent_options, chunk_input_budget, sink, None, None).await
+        self.extract_semantics_inner(
+            llm,
+            categories,
+            agent_options,
+            chunk_input_budget,
+            sink,
+            None,
+            None,
+        )
+        .await
     }
 
     /// Graph-aware variant: co-locates call-graph cycles in one shard (H1 proxy) and
@@ -642,7 +690,16 @@ impl ProjectData {
         call_graph: &CallGraph,
         backings: Option<&ExtractBackings>,
     ) -> Result<Vec<ExtractedSemantic>> {
-        self.extract_semantics_inner(llm, categories, agent_options, chunk_input_budget, sink, Some(call_graph), backings).await
+        self.extract_semantics_inner(
+            llm,
+            categories,
+            agent_options,
+            chunk_input_budget,
+            sink,
+            Some(call_graph),
+            backings,
+        )
+        .await
     }
 
     /// Extract over MATERIALIZED shard files (sequential + manifest.json), resuming by
@@ -665,25 +722,47 @@ impl ProjectData {
         let system_prompt = prompts::GENERAL_ROLE_SYSTEM;
         let user_suffix = prompts::extract_semantics_user_suffix(categories);
         let checkpointed: std::collections::HashMap<u32, (String, Vec<u8>)> = match sink {
-            Some(s) => s.load_stage(crate::checkpoint::stage::SEMANTIC_EXTRACT).unwrap_or_default(),
+            Some(s) => s
+                .load_stage(crate::checkpoint::stage::SEMANTIC_EXTRACT)
+                .unwrap_or_default(),
             None => std::collections::HashMap::new(),
         };
-        let shared_existing = std::sync::Arc::new(std::sync::Mutex::new(backings.map(|b| b.existing_nodes.clone()).unwrap_or_default()));
+        let shared_existing = std::sync::Arc::new(std::sync::Mutex::new(
+            backings
+                .map(|b| b.existing_nodes.clone())
+                .unwrap_or_default(),
+        ));
         let mut all = Vec::new();
         for entry in manifest {
             let idx = entry["index"].as_u64().unwrap_or(0) as u32;
             let file = entry["file"].as_str().unwrap_or("");
             let content = std::fs::read_to_string(shard_dir.join(file))?;
-            let ids: Vec<i32> = entry["function_ids"].as_array()
-                .map(|a| a.iter().filter_map(|v| v.as_i64().map(|x| x as i32)).collect())
+            let ids: Vec<i32> = entry["function_ids"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_i64().map(|x| x as i32))
+                        .collect()
+                })
                 .unwrap_or_default();
             let gating = call_graph_gating(call_graph, Some(&ids));
             let hash = resume_signature_hash(&content, &user_suffix, &gating);
             if let Some((stored_hash, payload)) = checkpointed.get(&idx) {
                 if *stored_hash == hash {
                     if let Ok(stored) = serde_json::from_slice::<Vec<ExtractedSemantic>>(payload) {
-                        tracing::info!("Shard {} resumed from checkpoint ({} semantic(s))", idx, stored.len());
-                        { let mut g = shared_existing.lock().unwrap(); for s in &stored { for fn_ in &s.functions { g.push((fn_.contract.clone(), s.name.clone())); } } }
+                        tracing::info!(
+                            "Shard {} resumed from checkpoint ({} semantic(s))",
+                            idx,
+                            stored.len()
+                        );
+                        {
+                            let mut g = shared_existing.lock().unwrap();
+                            for s in &stored {
+                                for fn_ in &s.functions {
+                                    g.push((fn_.contract.clone(), s.name.clone()));
+                                }
+                            }
+                        }
                         all.extend(stored);
                         continue;
                     }
@@ -699,18 +778,29 @@ impl ProjectData {
                 system_prompt: system_prompt.to_string(),
                 user_prompt,
                 label: format!("semantic-shard-{}", idx),
-                call_graph: call_graph.map(|c| std::sync::Arc::new(c.clone())), 
-                storage_deps: std::sync::Arc::new(backings.map(|b| b.storage_deps.clone()).unwrap_or_default()),
+                call_graph: call_graph.map(|c| std::sync::Arc::new(c.clone())),
+                storage_deps: std::sync::Arc::new(
+                    backings.map(|b| b.storage_deps.clone()).unwrap_or_default(),
+                ),
                 existing_nodes: shared_existing.clone(),
             };
             let sems = extractor.run().await?;
             {
                 let mut g = shared_existing.lock().unwrap();
-                for s in &sems { for fn_ in &s.functions { g.push((fn_.contract.clone(), s.name.clone())); } }
+                for s in &sems {
+                    for fn_ in &s.functions {
+                        g.push((fn_.contract.clone(), s.name.clone()));
+                    }
+                }
             }
 
             if let Some(s) = sink {
-                s.write_chunk(crate::checkpoint::stage::SEMANTIC_EXTRACT, idx, &hash, &serde_json::to_vec(&sems)?)?;
+                s.write_chunk(
+                    crate::checkpoint::stage::SEMANTIC_EXTRACT,
+                    idx,
+                    &hash,
+                    &serde_json::to_vec(&sems)?,
+                )?;
             }
             all.extend(sems);
         }
@@ -726,11 +816,15 @@ impl ProjectData {
             for cid in &g {
                 if let Some(c) = cg.contracts.get(cid) {
                     let p = c.relative_file_path.to_string_lossy().replace('\\', "/");
-                    if !order.contains(&p) { order.push(p); }
+                    if !order.contains(&p) {
+                        order.push(p);
+                    }
                 }
             }
         }
-        let Some(idx) = body.find("### ") else { return body; };
+        let Some(idx) = body.find("### ") else {
+            return body;
+        };
         let header = body[..idx].to_string();
         let rest = &body[idx..];
         let mut sections: Vec<(String, String)> = Vec::new();
@@ -743,15 +837,22 @@ impl ProjectData {
             // Exact match must win: the old suffix match let an earlier short
             // entry "a.sol" rank a section actually belonging to "vendor/a.sol"
             // (audit 20261124-041549 F7). Fall back to slash-bounded suffixes.
-            if let Some(i) = order.iter().position(|o| o == &n) { return i; }
-            order.iter().position(|o| {
-                (!o.is_empty() && n.ends_with(&format!("/{}", o)))
-                    || (!n.is_empty() && o.ends_with(&format!("/{}", n)))
-            }).unwrap_or(usize::MAX)
+            if let Some(i) = order.iter().position(|o| o == &n) {
+                return i;
+            }
+            order
+                .iter()
+                .position(|o| {
+                    (!o.is_empty() && n.ends_with(&format!("/{}", o)))
+                        || (!n.is_empty() && o.ends_with(&format!("/{}", n)))
+                })
+                .unwrap_or(usize::MAX)
         };
         sections.sort_by_key(|(p, _)| rank(p));
         let mut out = header;
-        for (_, s) in sections { out.push_str(&s); }
+        for (_, s) in sections {
+            out.push_str(&s);
+        }
         out
     }
 
@@ -793,10 +894,7 @@ impl ProjectData {
         // Checkpoint resume: load already-completed chunks for this
         // stage. Empty when no sink is configured (hard invariant:
         // None produces byte-identical behavior).
-        let checkpointed: std::collections::HashMap<
-            u32,
-            (String, Vec<u8>),
-        > = match sink {
+        let checkpointed: std::collections::HashMap<u32, (String, Vec<u8>)> = match sink {
             Some(s) => s
                 .load_stage(crate::checkpoint::stage::SEMANTIC_EXTRACT)
                 .unwrap_or_default(),
@@ -812,7 +910,10 @@ impl ProjectData {
 
         let mut all_semantics = Vec::new();
         let shared_existing = std::sync::Arc::new(std::sync::Mutex::new(
-            backings.map(|b| b.existing_nodes.clone()).unwrap_or_default()));
+            backings
+                .map(|b| b.existing_nodes.clone())
+                .unwrap_or_default(),
+        ));
         let mut chunk_idx = 0usize;
         while let Some(chunk) = cursor.next_chunk(chunk_budget) {
             // Bind resume to the full prompt context, not just source text.
@@ -821,13 +922,9 @@ impl ProjectData {
 
             // Resume from checkpoint when the hash matches (same source
             // text, same budget => same deterministic chunk boundaries)
-            if let Some((stored_hash, payload)) =
-                checkpointed.get(&(chunk_idx as u32))
-            {
+            if let Some((stored_hash, payload)) = checkpointed.get(&(chunk_idx as u32)) {
                 if *stored_hash == hash {
-                    match serde_json::from_slice::<Vec<ExtractedSemantic>>(
-                        payload,
-                    ) {
+                    match serde_json::from_slice::<Vec<ExtractedSemantic>>(payload) {
                         Ok(stored) => {
                             tracing::info!(
                                 "Chunk {} resumed from checkpoint ({} semantic(s))",
@@ -871,7 +968,8 @@ impl ProjectData {
                 if !cycles.is_empty() {
                     user_prompt.push_str("\n## Call-graph cycle anchors (keep each cycle's mechanism in one semantic)\n");
                     for g in &cycles {
-                        user_prompt.push_str(&format!("- {}\n", shard_pack::cycle_signature(cg, g)));
+                        user_prompt
+                            .push_str(&format!("- {}\n", shard_pack::cycle_signature(cg, g)));
                     }
                 }
                 user_prompt.push_str(&shard_pack::graph_features(cg, None));
@@ -891,8 +989,10 @@ impl ProjectData {
                 system_prompt: system_prompt.to_string(),
                 user_prompt,
                 label: chunk_label,
-                call_graph: call_graph.map(|c| std::sync::Arc::new(c.clone())), 
-                storage_deps: std::sync::Arc::new(backings.map(|b| b.storage_deps.clone()).unwrap_or_default()),
+                call_graph: call_graph.map(|c| std::sync::Arc::new(c.clone())),
+                storage_deps: std::sync::Arc::new(
+                    backings.map(|b| b.storage_deps.clone()).unwrap_or_default(),
+                ),
                 // Share emitted nodes across chunks so LookupKgTool can find
                 // canonical nodes from earlier chunks (audit 20261124-072027 F8).
                 existing_nodes: shared_existing.clone(),
@@ -908,30 +1008,23 @@ impl ProjectData {
             // succeeded; a checkpoint write failure is logged, not fatal)
             if let Some(sink) = sink {
                 let payload = serde_json::to_vec(&chunk_semantics)
-                    .map_err(|e| {
-                        KgError::other(&format!(
-                            "checkpoint serialize: {}",
-                            e
-                        ))
-                    })?;
+                    .map_err(|e| KgError::other(&format!("checkpoint serialize: {}", e)))?;
                 if let Err(e) = sink.write_chunk(
                     crate::checkpoint::stage::SEMANTIC_EXTRACT,
                     chunk_idx as u32,
                     &hash,
                     &payload,
                 ) {
-                    tracing::warn!(
-                        "Checkpoint write failed for chunk {}: {}",
-                        chunk_idx,
-                        e,
-                    );
+                    tracing::warn!("Checkpoint write failed for chunk {}: {}", chunk_idx, e,);
                 }
             }
 
             {
                 let mut g = shared_existing.lock().unwrap();
                 for sem in &chunk_semantics {
-                    for f in &sem.functions { g.push((f.contract.clone(), sem.name.clone())); }
+                    for f in &sem.functions {
+                        g.push((f.contract.clone(), sem.name.clone()));
+                    }
                 }
             }
             all_semantics.extend(chunk_semantics);
@@ -947,29 +1040,60 @@ impl ProjectData {
     /// FGW structural+feature coupling (docs/SEMANTIC_EXTRACTION_REVIEW_AND_MATH.md §3.3).
     /// Proposes additional mechanism<->finding edges: feature = text distance, structure =
     /// semantic function names mentioned in the finding prose. Augments (never removes) LLM links.
-    fn fgw_structural_edges(semantics: &[ExtractedSemantic], findings: &[ExtractedFinding]) -> Vec<(usize, usize)> {
+    fn fgw_structural_edges(
+        semantics: &[ExtractedSemantic],
+        findings: &[ExtractedFinding],
+    ) -> Vec<(usize, usize)> {
         let mut idmap: std::collections::BTreeMap<String, i32> = std::collections::BTreeMap::new();
         let mut next = 0i32;
         for s in semantics {
             for fn_ in &s.functions {
                 let k = format!("{}::{}", fn_.contract, fn_.name);
-                if !idmap.contains_key(&k) { idmap.insert(k, next); next += 1; }
+                if !idmap.contains_key(&k) {
+                    idmap.insert(k, next);
+                    next += 1;
+                }
             }
         }
-        let sem: Vec<(String, Vec<i32>)> = semantics.iter().map(|s| {
-            let ids = s.functions.iter().filter_map(|fn_| idmap.get(&format!("{}::{}", fn_.contract, fn_.name)).copied()).collect();
-            (format!("{} {}", s.name, s.definition), ids)
-        }).collect();
-        let find: Vec<(String, Vec<i32>)> = findings.iter().map(|fd| {
-            let text = format!("{} {} {} {}", fd.title, fd.root_cause, fd.patterns, fd.description).to_lowercase();
-            let ids = idmap.iter().filter(|(k, _)| {
-                let fname = k.rsplit("::").next().unwrap_or("").to_lowercase();
-                fname.len() > 3 && text.contains(&fname)
-            }).map(|(_, v)| *v).collect();
-            (format!("{} {}", fd.title, fd.root_cause), ids)
-        }).collect();
+        let sem: Vec<(String, Vec<i32>)> = semantics
+            .iter()
+            .map(|s| {
+                let ids = s
+                    .functions
+                    .iter()
+                    .filter_map(|fn_| {
+                        idmap
+                            .get(&format!("{}::{}", fn_.contract, fn_.name))
+                            .copied()
+                    })
+                    .collect();
+                (format!("{} {}", s.name, s.definition), ids)
+            })
+            .collect();
+        let find: Vec<(String, Vec<i32>)> = findings
+            .iter()
+            .map(|fd| {
+                let text = format!(
+                    "{} {} {} {}",
+                    fd.title, fd.root_cause, fd.patterns, fd.description
+                )
+                .to_lowercase();
+                let ids = idmap
+                    .iter()
+                    .filter(|(k, _)| {
+                        let fname = k.rsplit("::").next().unwrap_or("").to_lowercase();
+                        fname.len() > 3 && text.contains(&fname)
+                    })
+                    .map(|(_, v)| *v)
+                    .collect();
+                (format!("{} {}", fd.title, fd.root_cause), ids)
+            })
+            .collect();
         knowdit_cg_static::fgw::link_semantics_findings(&sem, &find, 0.5)
-            .into_iter().enumerate().map(|(s_idx, f_idx)| (f_idx, s_idx)).collect()
+            .into_iter()
+            .enumerate()
+            .map(|(s_idx, f_idx)| (f_idx, s_idx))
+            .collect()
     }
 
     async fn link_findings_in_project(
@@ -1083,10 +1207,7 @@ impl ProjectData {
         };
 
         // Checkpoint resume: load already-completed chunks
-        let checkpointed: std::collections::HashMap<
-            u32,
-            (String, Vec<u8>),
-        > = match sink {
+        let checkpointed: std::collections::HashMap<u32, (String, Vec<u8>)> = match sink {
             Some(s) => s
                 .load_stage(crate::checkpoint::stage::FINDING_EXTRACT)
                 .unwrap_or_default(),
@@ -1106,13 +1227,9 @@ impl ProjectData {
             let hash = crate::checkpoint::chunk_hash(&chunk);
 
             // Resume from checkpoint when the hash matches
-            if let Some((stored_hash, payload)) =
-                checkpointed.get(&(chunk_idx as u32))
-            {
+            if let Some((stored_hash, payload)) = checkpointed.get(&(chunk_idx as u32)) {
                 if *stored_hash == hash {
-                    match serde_json::from_slice::<Vec<ExtractedFinding>>(
-                        payload,
-                    ) {
+                    match serde_json::from_slice::<Vec<ExtractedFinding>>(payload) {
                         Ok(stored) => {
                             tracing::info!(
                                 "Chunk {} resumed from checkpoint ({} finding(s))",
@@ -1122,8 +1239,7 @@ impl ProjectData {
                             // Re-canonicalize: the stored payload is the
                             // RAW findings; canonicalize is deterministic
                             for finding in stored {
-                                all_findings
-                                    .push(Self::canonicalize_finding(finding)?);
+                                all_findings.push(Self::canonicalize_finding(finding)?);
                             }
                             chunk_idx += 1;
                             continue;
@@ -1172,23 +1288,14 @@ impl ProjectData {
             // resume path can re-apply the same deterministic transform
             if let Some(sink) = sink {
                 let payload = serde_json::to_vec(&raw_findings)
-                    .map_err(|e| {
-                        KgError::other(&format!(
-                            "checkpoint serialize: {}",
-                            e
-                        ))
-                    })?;
+                    .map_err(|e| KgError::other(&format!("checkpoint serialize: {}", e)))?;
                 if let Err(e) = sink.write_chunk(
                     crate::checkpoint::stage::FINDING_EXTRACT,
                     chunk_idx as u32,
                     &hash,
                     &payload,
                 ) {
-                    tracing::warn!(
-                        "Checkpoint write failed for chunk {}: {}",
-                        chunk_idx,
-                        e,
-                    );
+                    tracing::warn!("Checkpoint write failed for chunk {}: {}", chunk_idx, e,);
                 }
             }
 
@@ -1504,7 +1611,7 @@ pub fn effective_max_input(model: &OpenAIModel) -> u64 {
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .filter(|v| *v > 0) // gate_20261031-023513: a zero override must not
-                            // silently reintroduce the zero-budget failure
+        // silently reintroduce the zero-budget failure
         .unwrap_or(131_072)
 }
 
@@ -1612,7 +1719,10 @@ mod merge_coverage_tests {
         let (results, missing) =
             ProjectData::finding_merge_results_with_coverage(&extracted, aggregated);
         assert_eq!(results.len(), 2);
-        assert!(missing.is_empty(), "no shortfall when every finding is decided");
+        assert!(
+            missing.is_empty(),
+            "no shortfall when every finding is decided"
+        );
     }
 
     /// Title matching is case-insensitive (the existing behaviour), so a
@@ -1623,10 +1733,12 @@ mod merge_coverage_tests {
         let aggregated = vec![decision("missing slippage check", vec![7])];
         let (_results, missing) =
             ProjectData::finding_merge_results_with_coverage(&extracted, aggregated);
-        assert!(missing.is_empty(), "case-only difference is not a shortfall");
+        assert!(
+            missing.is_empty(),
+            "case-only difference is not a shortfall"
+        );
     }
 }
-
 
 #[cfg(test)]
 mod readme_order_tests {
@@ -1643,10 +1755,7 @@ mod readme_order_tests {
     /// The README must therefore appear BEFORE the first source file.
     #[tokio::test]
     async fn readme_precedes_source_files_in_the_prompt_body() {
-        let dir = std::env::temp_dir().join(format!(
-            "knowdit-readme-order-{}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("knowdit-readme-order-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("contracts")).expect("mkdir");
         std::fs::write(
@@ -1667,11 +1776,11 @@ mod readme_order_tests {
 
         let readme_at = body.find("## README").expect(
             "the README must be present in the body; a missing README means \
-             the fixture did not load and this test would pass vacuously"
+             the fixture did not load and this test would pass vacuously",
         );
-        let first_source_at = body.find("### contracts").expect(
-            "the source file must be present in the body"
-        );
+        let first_source_at = body
+            .find("### contracts")
+            .expect("the source file must be present in the body");
         assert!(
             readme_at < first_source_at,
             "the README must precede the source files so a bounded \
@@ -1685,7 +1794,6 @@ mod readme_order_tests {
     }
 }
 
-
 #[cfg(test)]
 mod resume_tests {
     use super::*;
@@ -1697,11 +1805,20 @@ mod resume_tests {
         let chunk = "same source text";
         let base = resume_signature_hash(chunk, "suffix-A", "gate-A");
         assert_eq!(base, resume_signature_hash(chunk, "suffix-A", "gate-A"));
-        assert_ne!(base, resume_signature_hash(chunk, "suffix-B", "gate-A"),
-            "different categories/suffix must invalidate the checkpoint");
-        assert_ne!(base, resume_signature_hash(chunk, "suffix-A", "gate-B"),
-            "different call-graph gating must invalidate the checkpoint");
-        assert_ne!(base, resume_signature_hash("different text", "suffix-A", "gate-A"));
+        assert_ne!(
+            base,
+            resume_signature_hash(chunk, "suffix-B", "gate-A"),
+            "different categories/suffix must invalidate the checkpoint"
+        );
+        assert_ne!(
+            base,
+            resume_signature_hash(chunk, "suffix-A", "gate-B"),
+            "different call-graph gating must invalidate the checkpoint"
+        );
+        assert_ne!(
+            base,
+            resume_signature_hash("different text", "suffix-A", "gate-A")
+        );
     }
 
     // F8 smoke: call_graph_gating is deterministic and distinguishes none/some.

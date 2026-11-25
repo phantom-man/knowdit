@@ -60,12 +60,10 @@ pub struct Journal {
 impl Journal {
     pub fn new(dir: &Path, project_key: &str, stage: &str) -> io::Result<Self> {
         fs::create_dir_all(dir)?;
-        let name = format!(
-            "{}.{}.journal",
-            safe_key(project_key),
-            safe_key(stage)
-        );
-        Ok(Self { path: dir.join(name) })
+        let name = format!("{}.{}.journal", safe_key(project_key), safe_key(stage));
+        Ok(Self {
+            path: dir.join(name),
+        })
     }
 
     pub fn path(&self) -> &Path {
@@ -101,9 +99,7 @@ impl Journal {
     pub fn load(&self) -> io::Result<(Vec<ChunkRecord>, u64)> {
         let bytes = match fs::read(&self.path) {
             Ok(b) => b,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                return Ok((Vec::new(), 0))
-            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok((Vec::new(), 0)),
             Err(e) => return Err(e),
         };
         if bytes.len() < MAGIC.len() || &bytes[..MAGIC.len()] != MAGIC {
@@ -116,8 +112,7 @@ impl Journal {
             if pos + 4 > bytes.len() {
                 return Ok((recs, start as u64));
             }
-            let chunk_idx =
-                u32::from_le_bytes(bytes[pos..pos + 4].try_into().unwrap());
+            let chunk_idx = u32::from_le_bytes(bytes[pos..pos + 4].try_into().unwrap());
             pos += 4;
             if pos >= bytes.len() {
                 return Ok((recs, start as u64));
@@ -132,8 +127,7 @@ impl Journal {
                 Err(_) => return Ok((recs, start as u64)),
             };
             pos += hash_len;
-            let payload_len =
-                u32::from_le_bytes(bytes[pos..pos + 4].try_into().unwrap());
+            let payload_len = u32::from_le_bytes(bytes[pos..pos + 4].try_into().unwrap());
             pos += 4;
             if payload_len > MAX_PAYLOAD_LEN {
                 return Ok((recs, start as u64));
@@ -144,8 +138,7 @@ impl Journal {
             }
             let payload = bytes[pos..pos + pl].to_vec();
             pos += pl;
-            let stored_crc =
-                u32::from_le_bytes(bytes[pos..pos + 4].try_into().unwrap());
+            let stored_crc = u32::from_le_bytes(bytes[pos..pos + 4].try_into().unwrap());
             pos += 4;
             let mut crc_data = Vec::with_capacity(hash_len + pl);
             crc_data.extend_from_slice(hash.as_bytes());
@@ -153,7 +146,11 @@ impl Journal {
             if crc32(&crc_data) != stored_crc {
                 return Ok((recs, start as u64));
             }
-            recs.push(ChunkRecord { chunk_idx, hash, payload });
+            recs.push(ChunkRecord {
+                chunk_idx,
+                hash,
+                payload,
+            });
         }
     }
 
@@ -217,7 +214,10 @@ mod tests {
         let (recs, last) = j.load().unwrap();
         assert_eq!(recs, vec![rec(0, "h0", b"one"), rec(1, "h1", b"two")]);
         assert!(last > 0);
-        assert_eq!(last as usize, fs::metadata(j.path()).unwrap().len() as usize);
+        assert_eq!(
+            last as usize,
+            fs::metadata(j.path()).unwrap().len() as usize
+        );
     }
 
     #[test]

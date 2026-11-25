@@ -1463,8 +1463,7 @@ impl PlannedLinkWork {
                 }
                 other => other,
             };
-            step_result = match next_step
-            {
+            step_result = match next_step {
                 Ok(result) => result,
                 // A dead billing cap kills every later call too, so it has to
                 // reach the orchestrator.

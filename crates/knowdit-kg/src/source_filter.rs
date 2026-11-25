@@ -128,9 +128,7 @@ mod tests {
     fn skips_mock_files() {
         assert!(should_skip_file(Path::new("contracts/MockToken.sol")));
         assert!(should_skip_file(Path::new("contracts/mocks/ERC20Mock.sol")));
-        assert!(should_skip_file(Path::new(
-            "contracts/ChainlinkMock.sol"
-        )));
+        assert!(should_skip_file(Path::new("contracts/ChainlinkMock.sol")));
     }
 
     #[test]
@@ -216,14 +214,10 @@ mod tests {
     fn keeps_mock_interface_not_test_double() {
         // "IMockStrategy" contains "mock" as a substring but is an
         // interface, not a test double — must NOT be skipped
-        assert!(!should_skip_file(Path::new(
-            "contracts/IMockStrategy.sol"
-        )));
+        assert!(!should_skip_file(Path::new("contracts/IMockStrategy.sol")));
         // genuine mock doubles ARE skipped
         assert!(should_skip_file(Path::new("contracts/MockToken.sol")));
-        assert!(should_skip_file(Path::new(
-            "contracts/ERC20Mock.sol"
-        ))); // ends with "mock" after stripping .sol
+        assert!(should_skip_file(Path::new("contracts/ERC20Mock.sol"))); // ends with "mock" after stripping .sol
     }
 
     #[test]

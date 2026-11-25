@@ -25,12 +25,15 @@
 //! chunk; the orchestrator unions those id lists across chunks. If every
 //! chunk says "no merge", the new raw is admitted as a fresh canonical.
 
+use crate::extract_tools::{
+    CheckH1LoopsTool, InspectSymbolTool, LookupKgTool, StorageDepTool, TraceCallGraphTool,
+    ValidateSemanticTool,
+};
+use knowdit_cg_static::hyperbolic;
+use knowdit_cg_static::shard_pack;
+use knowdit_repo_model::cg::CallGraph;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use knowdit_repo_model::cg::CallGraph;
-use knowdit_cg_static::shard_pack;
-use knowdit_cg_static::hyperbolic;
-use crate::extract_tools::{InspectSymbolTool, TraceCallGraphTool, CheckH1LoopsTool, ValidateSemanticTool, StorageDepTool, LookupKgTool};
 
 use llmy::agent::tool::ToolBox;
 use llmy::agent::{LLMYError, tool};
@@ -206,12 +209,22 @@ impl EmitSemanticTool {
             );
         }
         if let Some(cg) = &self.call_graph {
-            let anchors: Vec<(String, String)> = args.functions.iter().map(|fn_| (fn_.name.clone(), fn_.contract.clone())).collect();
+            let anchors: Vec<(String, String)> = args
+                .functions
+                .iter()
+                .map(|fn_| (fn_.name.clone(), fn_.contract.clone()))
+                .collect();
             if !shard_pack::functions_anchored(cg, &anchors) {
-                return Ok("error: semantic anchors are not co-located in one call-graph shard".to_string());
+                return Ok(
+                    "error: semantic anchors are not co-located in one call-graph shard"
+                        .to_string(),
+                );
             }
             if !hyperbolic::hyperbolic_anchored(cg, &anchors) {
-                return Ok("error: semantic anchors fail the hyperbolic geodesic/radial hierarchy gate".to_string());
+                return Ok(
+                    "error: semantic anchors fail the hyperbolic geodesic/radial hierarchy gate"
+                        .to_string(),
+                );
             }
         }
         Ok(self.buffer.push_with_message(args, "semantic").await)
@@ -235,14 +248,33 @@ impl FinalizeSemanticExtractTool {
     async fn invoke(&self, args: FinalizeArgs) -> std::result::Result<String, LLMYError> {
         // Pre-commit coverage gate BEFORE finalizing so the remedy is actionable.
         let emitted = self.buffer.snapshot().await;
-        let referenced: std::collections::BTreeSet<String> =
-            emitted.iter().flat_map(|s| s.functions.iter().map(|f| f.name.clone())).collect();
-        let tokens: std::collections::BTreeSet<String> = self.chunk_source.split(|c: char| !c.is_alphanumeric() && c != '_').filter(|t| !t.is_empty()).map(|t| t.to_string()).collect();
-        let coupled: std::collections::BTreeSet<String> =
-            self.storage_deps.values().flatten().filter(|n| tokens.contains(*n)).cloned().collect();
-        let missed: Vec<&String> = coupled.iter().filter(|n| !referenced.contains(*n)).collect();
+        let referenced: std::collections::BTreeSet<String> = emitted
+            .iter()
+            .flat_map(|s| s.functions.iter().map(|f| f.name.clone()))
+            .collect();
+        let tokens: std::collections::BTreeSet<String> = self
+            .chunk_source
+            .split(|c: char| !c.is_alphanumeric() && c != '_')
+            .filter(|t| !t.is_empty())
+            .map(|t| t.to_string())
+            .collect();
+        let coupled: std::collections::BTreeSet<String> = self
+            .storage_deps
+            .values()
+            .flatten()
+            .filter(|n| tokens.contains(*n))
+            .cloned()
+            .collect();
+        let missed: Vec<&String> = coupled
+            .iter()
+            .filter(|n| !referenced.contains(*n))
+            .collect();
         if !missed.is_empty() {
-            return Ok(format!("error: coverage gap: {} state-coupled function(s) uncovered: {:?}. Emit semantics covering them, then call finalize again.", missed.len(), missed));
+            return Ok(format!(
+                "error: coverage gap: {} state-coupled function(s) uncovered: {:?}. Emit semantics covering them, then call finalize again.",
+                missed.len(),
+                missed
+            ));
         }
         Ok(self
             .buffer
@@ -282,8 +314,12 @@ impl SemanticChunkExtractor {
             tools.add_tool(CheckH1LoopsTool { cg: cg.clone() });
             tools.add_tool(ValidateSemanticTool { cg: cg.clone() });
         }
-        tools.add_tool(StorageDepTool { deps: self.storage_deps.clone() });
-        tools.add_tool(LookupKgTool { existing: self.existing_nodes.clone() });
+        tools.add_tool(StorageDepTool {
+            deps: self.storage_deps.clone(),
+        });
+        tools.add_tool(LookupKgTool {
+            existing: self.existing_nodes.clone(),
+        });
 
         let runner = AgentChunkRunner {
             llm: self.llm,
@@ -1805,9 +1841,9 @@ impl FindingMerger {
 fn order_by_unit_idx<T>(completed: Vec<(usize, T)>, total: usize) -> Result<Vec<T>> {
     let mut slots: Vec<Option<T>> = (0..total).map(|_| None).collect();
     for (idx, value) in completed {
-        let slot = slots
-            .get_mut(idx)
-            .ok_or_else(|| KgError::other(format!("merge unit index {idx} out of range {total}")))?;
+        let slot = slots.get_mut(idx).ok_or_else(|| {
+            KgError::other(format!("merge unit index {idx} out of range {total}"))
+        })?;
         if slot.is_some() {
             return Err(KgError::other(format!("duplicate merge unit index {idx}")));
         }
@@ -1824,9 +1860,9 @@ fn order_by_unit_idx<T>(completed: Vec<(usize, T)>, total: usize) -> Result<Vec<
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use knowdit_kg_model::db::audit_finding::FindingSeverity;
     use knowdit_kg_model::db::finding_category::VulnerabilityCategory;
-    use super::*;
 
     fn batch_sizes(batches: &[Vec<i32>]) -> Vec<usize> {
         batches.iter().map(Vec::len).collect()
@@ -2040,5 +2076,4 @@ mod tests {
             "the prompt must never instruct zero decisions for a non-empty block"
         );
     }
-
 }

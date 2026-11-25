@@ -48,7 +48,10 @@ fn depth_radius(depth: usize) -> f64 {
 
 fn point(depth: usize, angle: f64) -> Poincare {
     let r = depth_radius(depth);
-    Poincare { x: r * angle.cos(), y: r * angle.sin() }
+    Poincare {
+        x: r * angle.cos(),
+        y: r * angle.sin(),
+    }
 }
 
 /// Embed a contract branch: contract at depth1 with its own angle; functions at depth2
@@ -85,7 +88,10 @@ pub fn hyperbolic_anchored(cg: &CallGraph, funcs: &[(String, String)]) -> bool {
         let mut found: Option<(String, String)> = None;
         for c in cg.contracts.values() {
             let cp = c.relative_file_path.to_string_lossy().replace('\\', "/");
-            if cp == norm || cp.ends_with(&format!("/{}", norm)) || norm.ends_with(&format!("/{}", cp)) {
+            if cp == norm
+                || cp.ends_with(&format!("/{}", norm))
+                || norm.ends_with(&format!("/{}", cp))
+            {
                 if c.functions.iter().any(|f| &f.name == fname) {
                     found = Some((c.name.clone(), fname.clone()));
                     break;
@@ -142,8 +148,13 @@ mod tests {
         // must exceed the own-branch distance by a clear margin. This holds
         // regardless of the exact CONE constant and documents the invariant
         // the gate needs (audit 20261125-114940).
-        assert!(cross > own + 0.02,
-            "cross-branch distance {} must clearly exceed own-branch {} (CONE={})", cross, own, CONE);
+        assert!(
+            cross > own + 0.02,
+            "cross-branch distance {} must clearly exceed own-branch {} (CONE={})",
+            cross,
+            own,
+            CONE
+        );
         // Do not assert a numeric boundary here: the exact floating-point
         // value depends on the hash constants. The invariant under test is
         // the ORDERING (own stays inside, cross falls outside) with a margin,

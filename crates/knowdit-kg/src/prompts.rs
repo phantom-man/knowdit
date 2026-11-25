@@ -756,11 +756,14 @@ mod merge_prompt_tests {
     /// "exactly 1 findings".
     #[test]
     fn merge_prompt_singular_is_grammatical() {
-        let p = merge_findings_user_message("### 3\n- Title: x\n",
-                                            "### 20\n- Title: y\n");
-        assert!(p.contains("exactly 1 new finding"),
-                "singular form required for a 1-finding block");
-        assert!(!p.contains("exactly 1 new findings"),
-                "must not emit the plural for a single finding");
+        let p = merge_findings_user_message("### 3\n- Title: x\n", "### 20\n- Title: y\n");
+        assert!(
+            p.contains("exactly 1 new finding"),
+            "singular form required for a 1-finding block"
+        );
+        assert!(
+            !p.contains("exactly 1 new findings"),
+            "must not emit the plural for a single finding"
+        );
     }
 }

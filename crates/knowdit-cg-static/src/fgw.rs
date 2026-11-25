@@ -12,7 +12,12 @@ pub fn fused_cost(feature: &[Vec<f64>], structure: &[Vec<f64>], alpha: f64) -> V
     feature
         .iter()
         .zip(structure.iter())
-        .map(|(fr, sr)| fr.iter().zip(sr.iter()).map(|(f, s)| a * f + (1.0 - a) * s).collect())
+        .map(|(fr, sr)| {
+            fr.iter()
+                .zip(sr.iter())
+                .map(|(f, s)| a * f + (1.0 - a) * s)
+                .collect()
+        })
         .collect()
 }
 
@@ -26,7 +31,10 @@ pub fn sinkhorn(cost: &[Vec<f64>], eps: f64, iters: usize) -> Vec<Vec<f64>> {
     }
     let eps = eps.max(1e-6);
     // K = exp(-C/eps)
-    let k: Vec<Vec<f64>> = cost.iter().map(|r| r.iter().map(|c| (-c / eps).exp()).collect()).collect();
+    let k: Vec<Vec<f64>> = cost
+        .iter()
+        .map(|r| r.iter().map(|c| (-c / eps).exp()).collect())
+        .collect();
     let mut u = vec![1.0f64; n];
     let mut v = vec![1.0f64; m];
     let a = 1.0 / n as f64;
@@ -43,11 +51,19 @@ pub fn sinkhorn(cost: &[Vec<f64>], eps: f64, iters: usize) -> Vec<Vec<f64>> {
             v[j] = b / ku.max(1e-12);
         }
     }
-    (0..n).map(|i| (0..m).map(|j| u[i] * k[i][j] * v[j]).collect()).collect()
+    (0..n)
+        .map(|i| (0..m).map(|j| u[i] * k[i][j] * v[j]).collect())
+        .collect()
 }
 
 /// FGW coupling = Sinkhorn on the fused feature+structure cost.
-pub fn fgw_coupling(feature: &[Vec<f64>], structure: &[Vec<f64>], alpha: f64, eps: f64, iters: usize) -> Vec<Vec<f64>> {
+pub fn fgw_coupling(
+    feature: &[Vec<f64>],
+    structure: &[Vec<f64>],
+    alpha: f64,
+    eps: f64,
+    iters: usize,
+) -> Vec<Vec<f64>> {
     sinkhorn(&fused_cost(feature, structure, alpha), eps, iters)
 }
 
@@ -55,7 +71,13 @@ pub fn fgw_coupling(feature: &[Vec<f64>], structure: &[Vec<f64>], alpha: f64, ep
 pub fn best_links(coupling: &[Vec<f64>]) -> Vec<usize> {
     coupling
         .iter()
-        .map(|row| row.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).map(|(j, _)| j).unwrap_or(0))
+        .map(|row| {
+            row.iter()
+                .enumerate()
+                .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+                .map(|(j, _)| j)
+                .unwrap_or(0)
+        })
         .collect()
 }
 
@@ -68,22 +90,41 @@ pub fn link_semantics_findings(
     alpha: f64,
 ) -> Vec<usize> {
     let tok = |s: &String| -> std::collections::BTreeSet<String> {
-        s.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|t| !t.is_empty()).map(|t| t.to_string()).collect()
+        s.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|t| !t.is_empty())
+            .map(|t| t.to_string())
+            .collect()
     };
-    let jac = |a: &std::collections::BTreeSet<String>, b: &std::collections::BTreeSet<String>| -> f64 {
-        let u = a.union(b).count();
-        if u == 0 { 1.0 } else { 1.0 - (a.intersection(b).count() as f64 / u as f64) }
-    };
+    let jac =
+        |a: &std::collections::BTreeSet<String>, b: &std::collections::BTreeSet<String>| -> f64 {
+            let u = a.union(b).count();
+            if u == 0 {
+                1.0
+            } else {
+                1.0 - (a.intersection(b).count() as f64 / u as f64)
+            }
+        };
     let sjac = |a: &Vec<i32>, b: &Vec<i32>| -> f64 {
         let sa: std::collections::BTreeSet<i32> = a.iter().copied().collect();
         let sb: std::collections::BTreeSet<i32> = b.iter().copied().collect();
         let u = sa.union(&sb).count();
-        if u == 0 { 1.0 } else { 1.0 - (sa.intersection(&sb).count() as f64 / u as f64) }
+        if u == 0 {
+            1.0
+        } else {
+            1.0 - (sa.intersection(&sb).count() as f64 / u as f64)
+        }
     };
     let st: Vec<_> = sem.iter().map(|(n, _)| tok(n)).collect();
     let ft: Vec<_> = find.iter().map(|(n, _)| tok(n)).collect();
-    let feat: Vec<Vec<f64>> = st.iter().map(|s| ft.iter().map(|t| jac(s, t)).collect()).collect();
-    let stru: Vec<Vec<f64>> = sem.iter().map(|(_, a)| find.iter().map(|(_, b)| sjac(a, b)).collect()).collect();
+    let feat: Vec<Vec<f64>> = st
+        .iter()
+        .map(|s| ft.iter().map(|t| jac(s, t)).collect())
+        .collect();
+    let stru: Vec<Vec<f64>> = sem
+        .iter()
+        .map(|(_, a)| find.iter().map(|(_, b)| sjac(a, b)).collect())
+        .collect();
     best_links(&fgw_coupling(&feat, &stru, alpha, 0.05, 100))
 }
 
@@ -107,19 +148,36 @@ pub fn link_semantics_findings_neural(
     // dimension; on mismatch fall back to the lexical linker, which never
     // mixes spaces (audit 20261124-054841 F13).
     let dim = se.first().map(|v| v.len());
-    if dim.is_none() || se.is_empty() || fe.is_empty()
+    if dim.is_none()
+        || se.is_empty()
+        || fe.is_empty()
         || se.iter().any(|v| v.len() != dim.unwrap())
-        || fe.iter().any(|v| v.len() != dim.unwrap()) {
+        || fe.iter().any(|v| v.len() != dim.unwrap())
+    {
         return link_semantics_findings(sem, find, alpha);
     }
-    let feat: Vec<Vec<f64>> = se.iter().map(|s| fe.iter().map(|f| 1.0 - crate::embed::cosine(s, f)).collect()).collect();
+    let feat: Vec<Vec<f64>> = se
+        .iter()
+        .map(|s| {
+            fe.iter()
+                .map(|f| 1.0 - crate::embed::cosine(s, f))
+                .collect()
+        })
+        .collect();
     let sjac = |a: &Vec<i32>, b: &Vec<i32>| -> f64 {
         let sa: std::collections::BTreeSet<i32> = a.iter().copied().collect();
         let sb: std::collections::BTreeSet<i32> = b.iter().copied().collect();
         let u = sa.union(&sb).count();
-        if u == 0 { 1.0 } else { 1.0 - (sa.intersection(&sb).count() as f64 / u as f64) }
+        if u == 0 {
+            1.0
+        } else {
+            1.0 - (sa.intersection(&sb).count() as f64 / u as f64)
+        }
     };
-    let stru: Vec<Vec<f64>> = sem.iter().map(|(_, a)| find.iter().map(|(_, b)| sjac(a, b)).collect()).collect();
+    let stru: Vec<Vec<f64>> = sem
+        .iter()
+        .map(|(_, a)| find.iter().map(|(_, b)| sjac(a, b)).collect())
+        .collect();
     best_links(&fgw_coupling(&feat, &stru, alpha, 0.05, 100))
 }
 
@@ -167,8 +225,14 @@ mod tests {
 
     #[test]
     fn links_semantic_to_matching_finding() {
-        let sem = vec![("reward accounting".into(), vec![1, 2]), ("oracle price".into(), vec![3])];
-        let find = vec![("reward accounting bug".into(), vec![1, 2]), ("oracle manipulation".into(), vec![3])];
+        let sem = vec![
+            ("reward accounting".into(), vec![1, 2]),
+            ("oracle price".into(), vec![3]),
+        ];
+        let find = vec![
+            ("reward accounting bug".into(), vec![1, 2]),
+            ("oracle manipulation".into(), vec![3]),
+        ];
         assert_eq!(link_semantics_findings(&sem, &find, 0.5), vec![0, 1]);
     }
 

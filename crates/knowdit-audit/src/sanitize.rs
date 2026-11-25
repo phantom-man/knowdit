@@ -179,10 +179,12 @@ impl Neutralizer {
                         for call in calls.iter_mut() {
                             match &mut call.inner {
                                 Calls::Function(f) => {
-                                    changed |= self.neutralize_str(&mut f.inner.function.inner.arguments)
+                                    changed |=
+                                        self.neutralize_str(&mut f.inner.function.inner.arguments)
                                 }
                                 Calls::Custom(c) => {
-                                    changed |= self.neutralize_str(&mut c.inner.custom_tool.inner.input)
+                                    changed |=
+                                        self.neutralize_str(&mut c.inner.custom_tool.inner.input)
                                 }
                             }
                         }
@@ -222,7 +224,10 @@ impl Neutralizer {
             {
                 let mut text = text;
                 if self.neutralize_str(&mut text) {
-                    let _ = msg.0.other.insert_value("reasoning_content".to_string(), text);
+                    let _ = msg
+                        .0
+                        .other
+                        .insert_value("reasoning_content".to_string(), text);
                     changed = true;
                 }
             }
@@ -239,8 +244,9 @@ mod tests {
     #[test]
     fn neutral_register_rewrite_is_identifier_safe() {
         let n = Neutralizer::new();
-        let mut src = "address attacker = msg.sender; vm.prank(attacker); // attacker drains victim"
-            .to_string();
+        let mut src =
+            "address attacker = msg.sender; vm.prank(attacker); // attacker drains victim"
+                .to_string();
         assert!(n.neutralize_str(&mut src));
         assert_eq!(
             src,

@@ -1,9 +1,8 @@
 pub mod agent_runner;
 pub mod agents;
 pub mod category;
-pub mod checkpoint_journal;
 pub mod checkpoint;
-pub mod source_filter;
+pub mod checkpoint_journal;
 pub mod db;
 pub mod error;
 pub mod extract_tools;
@@ -13,6 +12,7 @@ pub mod link;
 pub mod merge_kg;
 pub mod project_loader;
 pub mod prompts;
+pub mod source_filter;
 pub mod stats;
 pub mod text;
 pub mod vulnerability;

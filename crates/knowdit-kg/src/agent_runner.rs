@@ -282,7 +282,10 @@ impl<T> AgentChunkBuffer<T> {
         std::mem::take(&mut *self.items.lock().await)
     }
     /// Read-only clone of current items (coverage gates) without draining.
-    pub async fn snapshot(&self) -> Vec<T> where T: Clone {
+    pub async fn snapshot(&self) -> Vec<T>
+    where
+        T: Clone,
+    {
         self.items.lock().await.clone()
     }
 
@@ -366,11 +369,7 @@ impl<T> AgentChunkRunner<T> {
             {
                 Ok(step) => break step,
                 Err(err)
-                    if should_retry_step(
-                        &err,
-                        initial_attempt,
-                        options.output_length_retries,
-                    ) =>
+                    if should_retry_step(&err, initial_attempt, options.output_length_retries) =>
                 {
                     initial_attempt += 1;
                     tracing::warn!(
@@ -419,11 +418,7 @@ impl<T> AgentChunkRunner<T> {
                 {
                     Ok(step) => break step,
                     Err(err)
-                        if should_retry_step(
-                            &err,
-                            step_attempt,
-                            options.output_length_retries,
-                        ) =>
+                        if should_retry_step(&err, step_attempt, options.output_length_retries) =>
                     {
                         step_attempt += 1;
                         tracing::warn!(
@@ -464,7 +459,6 @@ impl<T> AgentChunkRunner<T> {
         })
     }
 }
-
 
 #[cfg(test)]
 mod tests {

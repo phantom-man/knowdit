@@ -7,27 +7,42 @@
 //! offline. A local server is provided at tools/embed_server.py (sentence-transformers).
 
 use std::io::{Read, Write};
-use std::path::PathBuf;
 use std::net::TcpStream;
+use std::path::PathBuf;
 use std::time::Duration;
 
 pub fn cosine(a: &[f64], b: &[f64]) -> f64 {
     let dot: f64 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
     let na: f64 = a.iter().map(|x| x * x).sum::<f64>().sqrt();
     let nb: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt();
-    if na == 0.0 || nb == 0.0 { 0.0 } else { dot / (na * nb) }
+    if na == 0.0 || nb == 0.0 {
+        0.0
+    } else {
+        dot / (na * nb)
+    }
 }
 
 /// Deterministic 64-dim hashed token vector (fallback), L2-normalized.
 pub fn fallback_vec(text: &str) -> Vec<f64> {
     let mut v = vec![0.0f64; 64];
-    for t in text.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|t| !t.is_empty()) {
+    for t in text
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| !t.is_empty())
+    {
         let mut h: u64 = 14695981039346656037;
-        for b in t.bytes() { h ^= b as u64; h = h.wrapping_mul(1099511628211); }
+        for b in t.bytes() {
+            h ^= b as u64;
+            h = h.wrapping_mul(1099511628211);
+        }
         v[(h % 64) as usize] += 1.0;
     }
     let n: f64 = v.iter().map(|x| x * x).sum::<f64>().sqrt();
-    if n > 0.0 { for x in v.iter_mut() { *x /= n; } }
+    if n > 0.0 {
+        for x in v.iter_mut() {
+            *x /= n;
+        }
+    }
     v
 }
 
@@ -68,11 +83,17 @@ fn neural_embed(texts: &[String]) -> Option<Vec<Vec<f64>>> {
         }
     }
     let mut stream = stream?;
-    stream.set_read_timeout(Some(Duration::from_secs(10))).ok()?;
-    stream.set_write_timeout(Some(Duration::from_secs(10))).ok()?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .ok()?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(10)))
+        .ok()?;
     let mut req = format!(
         "POST /v1/embeddings HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n",
-        host, payload.len());
+        host,
+        payload.len()
+    );
     let loopback = host == "127.0.0.1" || host == "localhost" || host == "::1";
     if loopback {
         if let Ok(key) = std::env::var("KNOWDIT_EMBED_KEY") {
@@ -93,21 +114,31 @@ fn neural_embed(texts: &[String]) -> Option<Vec<Vec<f64>>> {
         // Strict: every component must be a finite number. filter_map dropping
         // nulls/strings would accept a malformed vector and feed it to cosine
         // (audit 20261124-054841 F11).
-        if emb.is_empty() { return None; }
+        if emb.is_empty() {
+            return None;
+        }
         let mut v = Vec::with_capacity(emb.len());
         for x in emb {
             let n = x.as_f64()?;
-            if !n.is_finite() { return None; }
+            if !n.is_finite() {
+                return None;
+            }
             v.push(n);
         }
         out.push(v);
     }
-    if out.len() != texts.len() { return None; }
-    if out.is_empty() { return Some(out); } // empty input: no vectors to validate
+    if out.len() != texts.len() {
+        return None;
+    }
+    if out.is_empty() {
+        return Some(out);
+    } // empty input: no vectors to validate
     // All vectors must share one dimension, otherwise cosine compares zipped
     // prefixes from unrelated spaces.
     let dim = out[0].len();
-    if out.iter().any(|v| v.len() != dim) { return None; }
+    if out.iter().any(|v| v.len() != dim) {
+        return None;
+    }
     Some(out)
 }
 
@@ -215,7 +246,9 @@ impl EmbedServerGuard {
     fn spawn(&mut self, host: &str, port: u16) -> Result<(), ()> {
         // embed_server.py binds a fixed port; a different configured port can never
         // become healthy. Degrade immediately instead of waiting the full startup timeout.
-        if port != 8766 && std::env::var("KNOWDIT_REPO_ROOT").is_err() { return Err(()); }
+        if port != 8766 && std::env::var("KNOWDIT_REPO_ROOT").is_err() {
+            return Err(());
+        }
         if !cfg!(windows) && std::env::var("KNOWDIT_EMBED_PYTHON").is_err() {
             return Err(());
         }
@@ -278,7 +311,9 @@ impl Drop for EmbedServerGuard {
 
 /// Embed texts: neural backend when reachable, else deterministic fallback.
 pub fn embed_texts(texts: &[String]) -> Vec<Vec<f64>> {
-    if let Some(v) = neural_embed(texts) { return v; }
+    if let Some(v) = neural_embed(texts) {
+        return v;
+    }
     texts.iter().map(|t| fallback_vec(t)).collect()
 }
 
@@ -307,11 +342,15 @@ mod tests {
     fn embed_falls_back_offline() {
         let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // Force an unreachable endpoint so the fallback path is exercised deterministically.
-        unsafe { std::env::set_var("KNOWDIT_EMBED_URL", "http://127.0.0.1:9"); }
+        unsafe {
+            std::env::set_var("KNOWDIT_EMBED_URL", "http://127.0.0.1:9");
+        }
         let v = embed_texts(&["alpha".into(), "beta".into()]);
         assert_eq!(v.len(), 2);
         assert_eq!(v[0].len(), 64);
-        unsafe { std::env::remove_var("KNOWDIT_EMBED_URL"); }
+        unsafe {
+            std::env::remove_var("KNOWDIT_EMBED_URL");
+        }
     }
 
     // Regression: audit 20261124-054841 F11. A response with one embedding
@@ -324,7 +363,10 @@ mod tests {
         test_env("KNOWDIT_EMBED_URL", "http://localhost:9");
         let v = embed_texts(&[]);
         assert!(v.is_empty());
-        match prev { Some(x) => test_env("KNOWDIT_EMBED_URL", &x), None => clear_test_env("KNOWDIT_EMBED_URL") }
+        match prev {
+            Some(x) => test_env("KNOWDIT_EMBED_URL", &x),
+            None => clear_test_env("KNOWDIT_EMBED_URL"),
+        }
     }
 
     #[test]
@@ -342,7 +384,11 @@ mod tests {
                     let mut buf = [0u8; 4096];
                     let _ = st.read(&mut buf);
                     let body = r#"{"data":[{"embedding":[1.0,null,3.0]}]}"#;
-                    let resp = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
                     let _ = st.write_all(resp.as_bytes());
                     return;
                 }
@@ -351,17 +397,28 @@ mod tests {
         });
         let v = embed_texts(&["alpha".into()]);
         h.join().ok();
-        assert_eq!(v[0].len(), 64, "malformed neural vector must fall back to 64-dim hash");
-        match prev { Some(x) => test_env("KNOWDIT_EMBED_URL", &x), None => clear_test_env("KNOWDIT_EMBED_URL") }
+        assert_eq!(
+            v[0].len(),
+            64,
+            "malformed neural vector must fall back to 64-dim hash"
+        );
+        match prev {
+            Some(x) => test_env("KNOWDIT_EMBED_URL", &x),
+            None => clear_test_env("KNOWDIT_EMBED_URL"),
+        }
     }
 
     #[test]
     fn https_rejected_falls_back() {
         let _lk = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        unsafe { std::env::set_var("KNOWDIT_EMBED_URL", "https://example.com:443"); }
+        unsafe {
+            std::env::set_var("KNOWDIT_EMBED_URL", "https://example.com:443");
+        }
         let v = embed_texts(&["x".into()]);
         assert_eq!(v[0].len(), 64); // no cleartext https; deterministic fallback
-        unsafe { std::env::remove_var("KNOWDIT_EMBED_URL"); }
+        unsafe {
+            std::env::remove_var("KNOWDIT_EMBED_URL");
+        }
     }
 
     // --- managed lifecycle (RED-first) -------------------------------------
@@ -540,8 +597,11 @@ socketserver.TCPServer(('127.0.0.1', 46029), H).serve_forever()
         let start = std::time::Instant::now();
         let guard = EmbedServerGuard::acquire();
         assert!(!guard.healthy());
-        assert!(start.elapsed() < std::time::Duration::from_millis(5000),
-            "unsupported port must degrade without the full startup stall (elapsed={:?})", start.elapsed());
+        assert!(
+            start.elapsed() < std::time::Duration::from_millis(5000),
+            "unsupported port must degrade without the full startup stall (elapsed={:?})",
+            start.elapsed()
+        );
         clear_test_env("KNOWDIT_EMBED_MANAGED");
         clear_test_env("KNOWDIT_EMBED_HOST");
         clear_test_env("KNOWDIT_EMBED_PORT");
@@ -559,7 +619,10 @@ socketserver.TCPServer(('127.0.0.1', 46029), H).serve_forever()
             let guard = EmbedServerGuard::acquire();
             assert!(!guard.healthy());
         }
-        assert_eq!(std::env::var("KNOWDIT_EMBED_URL").ok().as_deref(), Some(EXTERNAL));
+        assert_eq!(
+            std::env::var("KNOWDIT_EMBED_URL").ok().as_deref(),
+            Some(EXTERNAL)
+        );
         clear_test_env("KNOWDIT_EMBED_URL");
     }
 
@@ -575,7 +638,10 @@ socketserver.TCPServer(('127.0.0.1', 46029), H).serve_forever()
             let guard = EmbedServerGuard::acquire();
             assert!(!guard.healthy());
         }
-        assert_eq!(std::env::var("KNOWDIT_EMBED_URL").ok().as_deref(), Some(EXTERNAL));
+        assert_eq!(
+            std::env::var("KNOWDIT_EMBED_URL").ok().as_deref(),
+            Some(EXTERNAL)
+        );
         clear_test_env("KNOWDIT_EMBED_URL");
         clear_test_env("KNOWDIT_EMBED_MANAGED");
         clear_test_env("KNOWDIT_EMBED_PYTHON");
@@ -614,7 +680,9 @@ socketserver.TCPServer(('127.0.0.1', 46029), H).serve_forever()
         // Only meaningful with tools/embed_server.py running; skip gracefully otherwise.
         if std::env::var("KNOWDIT_EMBED_URL").is_err() {
             // default 8766; probe via a tiny TCP connect
-            if std::net::TcpStream::connect(("127.0.0.1", 8766)).is_err() { return; }
+            if std::net::TcpStream::connect(("127.0.0.1", 8766)).is_err() {
+                return;
+            }
         }
         let v = embed_texts(&["reward accounting".into()]);
         assert!(v[0].len() == 384 || v[0].len() == 64);

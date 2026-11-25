@@ -43,10 +43,7 @@ impl CheckpointSink {
     /// Load all good checkpoint records for a stage.
     /// Torn tails are self-healed (truncated at the last good record).
     /// Returns `chunk_idx -> (hash, payload)` for every intact record.
-    pub fn load_stage(
-        &self,
-        stage: &str,
-    ) -> io::Result<HashMap<u32, (String, Vec<u8>)>> {
+    pub fn load_stage(&self, stage: &str) -> io::Result<HashMap<u32, (String, Vec<u8>)>> {
         let journal = self.journal(stage)?;
         let (records, last_good_offset) = journal.load()?;
 
@@ -134,15 +131,14 @@ mod tests {
     use super::*;
 
     fn tmpdir() -> PathBuf {
-        let d = std::env::temp_dir()
-            .join(format!(
-                "ckpt-sink-test-{}-{}",
-                std::process::id(),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            ));
+        let d = std::env::temp_dir().join(format!(
+            "ckpt-sink-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::create_dir_all(&d).unwrap();
         d
     }
@@ -168,8 +164,10 @@ mod tests {
     fn clear_removes_all_stages() {
         let dir = tmpdir();
         let sink = CheckpointSink::new(&dir, "test-project");
-        sink.write_chunk(stage::SEMANTIC_EXTRACT, 0, "h-1", b"s").unwrap();
-        sink.write_chunk(stage::FINDING_EXTRACT, 0, "h-2", b"f").unwrap();
+        sink.write_chunk(stage::SEMANTIC_EXTRACT, 0, "h-1", b"s")
+            .unwrap();
+        sink.write_chunk(stage::FINDING_EXTRACT, 0, "h-2", b"f")
+            .unwrap();
         sink.clear().unwrap();
 
         let s = sink.load_stage(stage::SEMANTIC_EXTRACT).unwrap();
@@ -206,8 +204,7 @@ mod tests {
             .unwrap();
 
         // Simulate a torn tail: append garbage bytes after the good record
-        let journal = Journal::new(&dir, "torn-test", stage::SEMANTIC_EXTRACT)
-            .unwrap();
+        let journal = Journal::new(&dir, "torn-test", stage::SEMANTIC_EXTRACT).unwrap();
         use std::io::Write;
         let mut f = std::fs::OpenOptions::new()
             .append(true)
